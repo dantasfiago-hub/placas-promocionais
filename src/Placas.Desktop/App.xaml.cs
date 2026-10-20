@@ -31,6 +31,13 @@ public partial class App : System.Windows.Application
                 store.Backup(Path.Combine(backups, $"placas-{DateTime.Now:yyyyMMdd-HHmmss}.db"));
                 foreach (var old in Directory.GetFiles(backups, "*.db").OrderByDescending(File.GetLastWriteTimeUtc).Skip(4)) File.Delete(old);
             }
+            var today = DateOnly.FromDateTime(DateTime.Today);
+            if (store.CountExpired(today) > 0)
+            {
+                // A limpeza automática só ocorre depois de um backup recuperável.
+                store.Backup(Path.Combine(backups, $"antes-limpeza-auto-{DateTime.Now:yyyyMMdd-HHmmss-fff}.db"));
+                store.DeleteExpired(today);
+            }
             new MainWindow(store).Show();
         }
         catch (Exception ex) { Log(ex); MessageBox.Show(ex.Message, "Erro na inicialização"); Shutdown(1); }

@@ -19,6 +19,7 @@ public sealed class SqliteStore : IStore
         command.CommandText = """
             PRAGMA journal_mode=WAL;
             CREATE TABLE IF NOT EXISTS imports(hash TEXT PRIMARY KEY, name TEXT NOT NULL, created TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS import_items(import_hash TEXT NOT NULL, item_id TEXT NOT NULL, PRIMARY KEY(import_hash,item_id));
             CREATE TABLE IF NOT EXISTS items(id TEXT PRIMARY KEY, code TEXT NOT NULL, search TEXT NOT NULL, source INTEGER NOT NULL, json TEXT NOT NULL);
             CREATE INDEX IF NOT EXISTS ix_items_code ON items(code);
             CREATE INDEX IF NOT EXISTS ix_items_source ON items(source);
@@ -58,8 +59,81 @@ public sealed class SqliteStore : IStore
             source.Value = (int)item.Source; json.Value = JsonSerializer.Serialize(item);
             command.ExecuteNonQuery();
         }
+        using var link = db.CreateCommand(); link.Transaction = transaction;
+        link.CommandText = "INSERT OR IGNORE INTO import_items(import_hash,item_id) VALUES($hash,$id)";
+        link.Parameters.AddWithValue("$hash", batch.Hash);
+        var linkedId = link.Parameters.Add("$id", SqliteType.Text);
+        foreach (var item in batch.Items) { linkedId.Value = item.Id; link.ExecuteNonQuery(); }
         transaction.Commit(); return true;
     }
+
+    public List<ImportRecord> ListImports()
+    {
+        using var db = Open(); using var command = db.CreateCommand();
+        command.CommandText = """
+            SELECT i.hash,i.name,i.created,COUNT(l.item_id)
+            FROM imports i LEFT JOIN import_items l ON l.import_hash=i.hash
+            GROUP BY i.hash,i.name,i.created ORDER BY i.created DESC
+            """;
+        using var reader = command.ExecuteReader();
+        var result = new List<ImportRecord>();
+        while (reader.Read())
+            result.Add(new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetInt32(3), reader.GetInt32(3)>0));
+        return result;
+    }
+
+    public int DeleteImport(string hash)
+    {
+        using var db = Open(); using var tx = db.BeginTransaction();
+        using var count = db.CreateCommand(); count.Transaction = tx;
+        count.CommandText = "SELECT COUNT(*) FROM import_items WHERE import_hash=$hash";
+        count.Parameters.AddWithValue("$hash", hash);
+        if (Convert.ToInt32(count.ExecuteScalar()) == 0)
+            throw new InvalidOperationException("Importação sem vínculos rastreáveis; não é possível excluí-la individualmente com segurança.");
+        using var delete = db.CreateCommand(); delete.Transaction = tx;
+        delete.CommandText = """
+            DELETE FROM items WHERE id IN
+            (SELECT item_id FROM import_items WHERE import_hash=$hash)
+            AND NOT EXISTS
+            (SELECT 1 FROM import_items other
+             WHERE other.item_id=items.id AND other.import_hash<>$hash)
+            """;
+        delete.Parameters.AddWithValue("$hash", hash);
+        var removed = delete.ExecuteNonQuery();
+        using var unlink = db.CreateCommand(); unlink.Transaction = tx;
+        unlink.CommandText = "DELETE FROM import_items WHERE import_hash=$hash";
+        unlink.Parameters.AddWithValue("$hash", hash); unlink.ExecuteNonQuery();
+        using var imported = db.CreateCommand(); imported.Transaction = tx;
+        imported.CommandText = "DELETE FROM imports WHERE hash=$hash";
+        imported.Parameters.AddWithValue("$hash", hash); imported.ExecuteNonQuery();
+        tx.Commit(); return removed;
+    }
+
+    public int CountExpired(DateOnly date)
+    {
+        using var db = Open(); using var cmd = db.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM items WHERE source IN (1,2) AND json_extract(json,'$.End') IS NOT NULL AND json_extract(json,'$.End') < $today";
+        cmd.Parameters.AddWithValue("$today", date.ToString("yyyy-MM-dd"));
+        return Convert.ToInt32(cmd.ExecuteScalar());
+    }
+
+    public int DeleteExpired(DateOnly date)
+    {
+        using var db = Open(); using var tx = db.BeginTransaction();
+        using var remove = db.CreateCommand(); remove.Transaction = tx;
+        remove.CommandText = """
+            DELETE FROM items
+            WHERE source IN (1,2) AND json_extract(json,'$.End') IS NOT NULL
+              AND json_extract(json,'$.End') < $today
+            """;
+        remove.Parameters.AddWithValue("$today", date.ToString("yyyy-MM-dd"));
+        var affected = remove.ExecuteNonQuery();
+        using var orphan = db.CreateCommand(); orphan.Transaction = tx;
+        orphan.CommandText = "DELETE FROM import_items WHERE item_id NOT IN (SELECT id FROM items)";
+        orphan.ExecuteNonQuery();
+        tx.Commit(); return affected;
+    }
+
     private static string SearchKey(string value) => new(value.Normalize(NormalizationForm.FormD)
         .Where(c => CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark).Select(char.ToUpperInvariant).ToArray());
     public List<PriceItem> Search(string text, SourceKind? source, int limit = 500)

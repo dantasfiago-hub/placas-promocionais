@@ -116,6 +116,27 @@
           </DataGrid.Columns></DataGrid>
         </DockPanel>
       </TabItem>
+      <TabItem Header="5. Gerenciar importações">
+        <DockPanel Margin="12">
+          <StackPanel DockPanel.Dock="Top">
+            <TextBlock Text="Gerenciar importações e limpar condições vencidas" FontSize="18" FontWeight="Bold" Margin="0,0,0,10"/>
+            <WrapPanel>
+              <Button Content="Atualizar lista" Click="RefreshImportsClick"/>
+              <Button Content="Excluir importação selecionada" Click="DeleteImportClick"/>
+              <Button Content="Limpar ofertas e promoções vencidas" Click="CleanExpiredClick"/>
+            </WrapPanel>
+            <TextBlock Text="Um backup é criado antes de qualquer exclusão. Layouts e histórico são preservados. Importações antigas sem vínculos não podem ser excluídas individualmente." TextWrapping="Wrap" Margin="4,10" Foreground="#526172"/>
+          </StackPanel>
+          <DataGrid x:Name="ImportsGrid" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Arquivo" Binding="{Binding Name}" Width="*"/>
+              <DataGridTextColumn Header="Importado em" Binding="{Binding Created}" Width="230"/>
+              <DataGridTextColumn Header="Itens associados" Binding="{Binding LinkedItems}" Width="150"/>
+              <DataGridCheckBoxColumn Header="Exclusão disponível" Binding="{Binding Managed}" Width="150"/>
+            </DataGrid.Columns>
+          </DataGrid>
+        </DockPanel>
+      </TabItem>
     </TabControl>
   </DockPanel>
 </Window>
