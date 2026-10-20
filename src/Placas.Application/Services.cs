@@ -15,6 +15,7 @@ public interface IStore
     bool Import(ImportBatch batch);
     List<ImportRecord> ListImports();
     int DeleteImport(string hash);
+    int CountExpired(DateOnly date);
     int DeleteExpired(DateOnly date);
     List<PriceItem> Search(string text, SourceKind? source, int limit = 500);
     void ConfirmPromotion(string itemId, QuantityRule rule);
