@@ -53,7 +53,7 @@ public partial class MainWindow : Window
         BatchGrid.ItemsSource = basket;
         // Printing is only routed through our validated pipeline, including keyboard shortcuts.
         DocumentPreview.CommandBindings.Add(new CommandBinding(ApplicationCommands.Print, (_, e) => { PrintClick(this, e); e.Handled = true; }));
-        RefreshTemplates(); RefreshProducts(); RefreshHistory();
+        RefreshTemplates(); RefreshProducts(); RefreshHistory(); RefreshImports();
     }
 
     private void Run(Action action)
@@ -87,7 +87,7 @@ public partial class MainWindow : Window
                 var imported = await Task.Run(() => store.Import(batch));
                 report.AppendLine(imported ? "Importação concluída." : "Arquivo já importado; nenhuma duplicação.");
             }
-            RefreshProducts(); Status.Text = "Importação finalizada. Consulte o relatório para os detalhes.";
+            RefreshImports(); RefreshProducts(); Status.Text = "Importação finalizada. Consulte o relatório para os detalhes.";
         }
         catch (OperationCanceledException) { report.AppendLine("Leitura cancelada."); Status.Text = "Leitura cancelada. Importações já confirmadas foram preservadas."; }
         catch (Exception ex) { App.Log(ex); report.AppendLine(ex.Message); MessageBox.Show(this, ex.Message, "Falha na importação"); }
@@ -100,6 +100,41 @@ public partial class MainWindow : Window
             Content = new TextBox { Text = importReport, IsReadOnly = true, TextWrapping = TextWrapping.Wrap,
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto, AcceptsReturn = true } }.ShowDialog();
     }
+
+    private void RefreshImports() => ImportsGrid.ItemsSource = store.ListImports();
+    private void RefreshImportsClick(object sender, RoutedEventArgs e) => Run(RefreshImports);
+    private string BackupBeforeMaintenance()
+    {
+        var directory = Path.Combine(App.DataDirectory, "backups");
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, $"antes-limpeza-{DateTime.Now:yyyyMMdd-HHmmss-fff}.db");
+        store.Backup(path);
+        return path;
+    }
+    private void DeleteImportClick(object sender, RoutedEventArgs e) => Run(() =>
+    {
+        if (ImportsGrid.SelectedItem is not ImportRecord entry)
+            throw new InvalidOperationException("Selecione uma importação.");
+        if (!entry.Managed)
+            throw new InvalidOperationException("Importação antiga sem rastreamento de itens. Não é possível excluir individualmente com segurança.");
+        if (MessageBox.Show(this, $"Excluir a importação '{entry.Name}' e suas condições exclusivas?\n\nItens compartilhados com outras importações serão preservados.",
+            "Confirmar exclusão", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+        var backup = BackupBeforeMaintenance();
+        var removed = store.DeleteImport(entry.Hash);
+        basket.Clear(); InvalidatePreview(); RefreshImports(); RefreshProducts();
+        Status.Text = $"Importação excluída: {removed} itens. Backup: {backup}";
+    });
+    private void CleanExpiredClick(object sender, RoutedEventArgs e) => Run(() =>
+    {
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        if (MessageBox.Show(this, $"Excluir ofertas e promoções vencidas antes de {today:dd/MM/yyyy}?\n\nO catálogo, os layouts e o histórico serão preservados.",
+            "Limpar condições vencidas", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+        var backup = BackupBeforeMaintenance();
+        var removed = store.DeleteExpired(today);
+        basket.Clear(); InvalidatePreview(); RefreshImports(); RefreshProducts();
+        Status.Text = $"Limpeza concluída: {removed} condições removidas. Backup: {backup}";
+    });
+
     private void RefreshProducts()
     {
         SourceKind? source = SourceFilter.SelectedIndex == 0 ? null : (SourceKind)(SourceFilter.SelectedIndex - 1);
