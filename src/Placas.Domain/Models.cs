@@ -20,7 +20,7 @@ public sealed record PriceItem(
     string Id, string Code, string DisplayCode, string Description,
     decimal Price, decimal? NormalPrice, DateOnly? Start, DateOnly? End,
     SourceKind Source, string? GroupCode, decimal Quantity,
-    QuantityRule Rule, string FileName, string Sheet, int Row);
+    QuantityRule Rule, string FileName, string Sheet, int Row, string? Family = null);
 
 public sealed record ImportIssue(string Sheet, int Row, string Message);
 public sealed record ImportBatch(string Hash, string FileName, List<PriceItem> Items, List<ImportIssue> Issues);
@@ -70,7 +70,7 @@ public sealed class PlateTemplate
 public static class PlateRules
 {
     private static readonly CultureInfo Pt = CultureInfo.GetCultureInfo("pt-BR");
-    public static readonly string[] Tokens = ["descricao", "codigo", "preco", "preco_normal", "validade", "condicao","quantidade"];
+    public static readonly string[] Tokens = ["descricao", "codigo", "preco", "preco_normal", "validade", "condicao","quantidade","familia"];
     public static void ValidateTemplate(PlateTemplate template)
     {
         if (template.SchemaVersion != 1 || string.IsNullOrWhiteSpace(template.Name))
@@ -126,6 +126,7 @@ public static class PlateRules
         };
         return text
             .Replace("{descricao}", item.Description)
+            .Replace("{familia}", item.Family ?? "")
             .Replace("{codigo}", item.DisplayCode)
             .Replace("{preco}", item.Price.ToString("C2", Pt))
             .Replace("{quantidade}", item.Quantity.ToString("0.##", Pt))
