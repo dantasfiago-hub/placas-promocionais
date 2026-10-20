@@ -68,7 +68,9 @@ public sealed class PlateRenderer
                     FixedPage.SetLeft(outline, x); FixedPage.SetTop(outline, y); page.Children.Add(outline);
                 }
             }
-            var content = new PageContent(); ((System.Windows.Markup.IAddChild)content).AddChild(page); document.Pages.Add(content);
+            // Explicitly attach the visual page to PageContent for reliable WPF pagination.
+            var content = new PageContent { Child = page };
+            document.Pages.Add(content);
         }
         return document;
     }

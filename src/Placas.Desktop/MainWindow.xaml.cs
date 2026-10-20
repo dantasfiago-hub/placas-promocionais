@@ -52,6 +52,9 @@ public partial class MainWindow : Window
     {
         this.store = store;
         InitializeComponent();
+        FitToWorkArea();
+        SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
+        Closed += (_, _) => SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
         previewTimer.Tick += (_, _) => { previewTimer.Stop(); RenderEditorPreviewSafely(); };
         TemplateFields.AddHandler(TextBoxBase.TextChangedEvent, new TextChangedEventHandler((_, _) => QueueEditorPreview()), true);
         ElementsGrid.AddHandler(TextBoxBase.TextChangedEvent, new TextChangedEventHandler((_, _) => QueueEditorPreview()), true);
@@ -64,6 +67,20 @@ public partial class MainWindow : Window
         // Printing is only routed through our validated pipeline, including keyboard shortcuts.
         DocumentPreview.CommandBindings.Add(new CommandBinding(ApplicationCommands.Print, (_, e) => { PrintClick(this, e); e.Handled = true; }));
         RefreshTemplates(); RefreshProducts(); RefreshHistory(); RefreshImports();
+    }
+
+    private void OnDisplaySettingsChanged(object? sender, EventArgs e)
+        => Dispatcher.BeginInvoke(new Action(FitToWorkArea));
+
+    private void FitToWorkArea()
+    {
+        var area = SystemParameters.WorkArea;
+        MaxWidth = area.Width;
+        MaxHeight = area.Height;
+        Width = Math.Min(1100, area.Width);
+        Height = Math.Min(720, area.Height);
+        Left = area.Left + Math.Max(0, (area.Width - Width) / 2);
+        Top = area.Top + Math.Max(0, (area.Height - Height) / 2);
     }
 
     private void Run(Action action)
@@ -446,9 +463,16 @@ public partial class MainWindow : Window
             Math.Max(width - area.OriginWidth - area.ExtentWidth, height - area.OriginHeight - area.ExtentHeight)) * 25.4 / 96;
         var margin = Math.Max(paper.Margin, minimumMargin);
         var document = renderer.Document(batch, width * 25.4 / 96, height * 25.4 / 96, margin, paper.Gap, CutMarks.IsChecked == true);
-        currentBatch = batch; DocumentPreview.Document = document;
+        // The document must not be attached to two DocumentViewers simultaneously.
+        // Detach any previous preview before displaying this document in the review dialog.
+        DocumentPreview.Document = null;
+        currentBatch = batch;
         // Modal review displays the exact document that will be sent to the driver.
-        if (!ReviewPrint(document, $"{dialog.PrintQueue.Name} • {document.Pages.Count} páginas • margem {margin:0.#} mm")) return;
+        if (!ReviewPrint(document, $"{dialog.PrintQueue.Name} • {document.Pages.Count} páginas • margem {margin:0.#} mm"))
+        {
+            DocumentPreview.Document = document;
+            return;
+        }
         store.SaveHistory(batch, "Envio iniciado", dialog.PrintQueue.Name);
         try
         {
@@ -457,18 +481,29 @@ public partial class MainWindow : Window
             Status.Text = "Lote enviado à fila. Confira a saída física na impressora.";
         }
         catch (Exception ex) { store.SaveHistory(batch, "Envio não confirmado", ex.Message); throw; }
-        finally { RefreshHistory(); }
+        finally { DocumentPreview.Document = document; RefreshHistory(); }
     });
     private bool ReviewPrint(System.Windows.Documents.FixedDocument document, string title)
     {
-        var window = new Window { Owner = this, Title = "Conferir impressão — " + title, Width = 1000, Height = 780, WindowStartupLocation = WindowStartupLocation.CenterOwner };
+        var area = SystemParameters.WorkArea;
+        var window = new Window
+        {
+            Owner = this, Title = "Conferir impressão — " + title,
+            Width = Math.Min(980, area.Width), Height = Math.Min(720, area.Height),
+            MaxWidth = area.Width, MaxHeight = area.Height,
+            MinWidth = Math.Min(440, area.Width), MinHeight = Math.Min(320, area.Height),
+            WindowStartupLocation = WindowStartupLocation.CenterOwner
+        };
         var panel = new DockPanel(); var button = new Button { Content = "Confirmar envio à impressora", Margin = new Thickness(12) };
         button.Click += (_, _) => window.DialogResult = true;
         DockPanel.SetDock(button, Dock.Bottom); panel.Children.Add(button);
         var viewer = new DocumentViewer { Document = document };
         viewer.CommandBindings.Add(new CommandBinding(ApplicationCommands.Print, (_, args) => args.Handled = true, (_, args) => { args.CanExecute = false; args.Handled = true; }));
         panel.Children.Add(viewer); window.Content = panel;
-        return window.ShowDialog() == true;
+        var confirmed = window.ShowDialog() == true;
+        // Release the viewer before printing the paginator or reusing it in the main view.
+        viewer.Document = null;
+        return confirmed;
     }
     private void RemoveBatchItemClick(object sender, RoutedEventArgs e) { if (BatchGrid.SelectedItem is BatchRow row) basket.Remove(row); InvalidatePreview(); }
     private void ClearBatchClick(object sender, RoutedEventArgs e) { basket.Clear(); InvalidatePreview(); }
