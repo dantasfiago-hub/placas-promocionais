@@ -157,12 +157,12 @@ public static class Pagination
             var maxMarginWidth = (pageWidthMm - template.WidthMm) / 2;
             var maxMarginHeight = (pageHeightMm - template.HeightMm) / 2;
             throw new InvalidOperationException(
-                $"O modelo não cabe no papel com estas margens.\\n" +
-                $"Papel: {pageWidthMm:0.##} × {pageHeightMm:0.##} mm.\\n" +
-                $"Placa: {template.WidthMm:0.##} × {template.HeightMm:0.##} mm.\\n" +
-                $"Margem por lado: {margin:0.##} mm; espaçamento: {gap:0.##} mm.\\n" +
-                $"Área disponível: {availableWidth:0.##} × {availableHeight:0.##} mm.\\n" +
-                $"Excesso: {overWidth:0.##} mm na largura e {overHeight:0.##} mm na altura.\\n" +
+                $"O modelo não cabe no papel com estas margens.\n" +
+                $"Papel: {pageWidthMm:0.##} × {pageHeightMm:0.##} mm.\n" +
+                $"Placa: {template.WidthMm:0.##} × {template.HeightMm:0.##} mm.\n" +
+                $"Margem por lado: {margin:0.##} mm; espaçamento: {gap:0.##} mm.\n" +
+                $"Área disponível: {availableWidth:0.##} × {availableHeight:0.##} mm.\n" +
+                $"Excesso: {overWidth:0.##} mm na largura e {overHeight:0.##} mm na altura.\n" +
                 (maxMarginWidth < 0 || maxMarginHeight < 0
                     ? "O modelo é maior que a folha: reduza a placa ou escolha um papel maior."
                     : $"Para uma placa por folha, use margem de no máximo {Math.Min(maxMarginWidth, maxMarginHeight):0.##} mm por lado.")
