@@ -9,6 +9,8 @@ using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Threading;
+using System.Windows.Controls.Primitives;
 using Microsoft.Win32;
 using Placas.Application;
 using Placas.Domain;
@@ -40,6 +42,7 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<BatchRow> basket = [];
     private List<ProductRow> products = [];
     private PlateTemplate? editing;
+    private readonly DispatcherTimer previewTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
     private CancellationTokenSource? importCancellation;
     private string importReport = "Nenhuma importação realizada nesta sessão.";
     private PrintBatch? currentBatch;
@@ -49,6 +52,13 @@ public partial class MainWindow : Window
     {
         this.store = store;
         InitializeComponent();
+        previewTimer.Tick += (_, _) => { previewTimer.Stop(); RenderEditorPreviewSafely(); };
+        TemplateFields.AddHandler(TextBoxBase.TextChangedEvent, new TextChangedEventHandler((_, _) => QueueEditorPreview()), true);
+        ElementsGrid.AddHandler(TextBoxBase.TextChangedEvent, new TextChangedEventHandler((_, _) => QueueEditorPreview()), true);
+        ElementsGrid.CurrentCellChanged += (_, _) => QueueEditorPreview();
+        ElementsGrid.CellEditEnding += (_, _) => QueueEditorPreview();
+        ElementsGrid.AddHandler(ToggleButton.CheckedEvent, new RoutedEventHandler((_, _) => QueueEditorPreview()), true);
+        ElementsGrid.AddHandler(ToggleButton.UncheckedEvent, new RoutedEventHandler((_, _) => QueueEditorPreview()), true);
         SaleDate.SelectedDate = DateTime.Today;
         BatchGrid.ItemsSource = basket;
         // Printing is only routed through our validated pipeline, including keyboard shortcuts.
@@ -192,8 +202,9 @@ public partial class MainWindow : Window
     }
     private void BindEditor()
     {
+        previewTimer.Stop();
         TemplateFields.DataContext = editing; ElementsGrid.ItemsSource = editing?.Elements;
-        if (editing is not null) Run(UpdateTemplatePreview);
+        if (editing is not null) RenderEditorPreviewSafely();
     }
     private void CommitEditor()
     {
@@ -215,9 +226,37 @@ public partial class MainWindow : Window
     private static PriceItem Example() => new("sample", "21513", "021513", "PILHA PANASONIC SUPER HYPER AA C/4UN", 5.69m, 7.99m,
         DateOnly.FromDateTime(DateTime.Today), DateOnly.FromDateTime(DateTime.Today.AddDays(30)), SourceKind.Offer, null, 1,
         QuantityRule.UnitPrice, "Exemplo", "", 0);
+    private void QueueEditorPreview()
+    {
+        if (editing is null) return;
+        previewTimer.Stop();
+        previewTimer.Start();
+    }
+    private void RenderEditorPreviewSafely()
+    {
+        if (editing is null) return;
+        // Never take keyboard focus away while the user types.
+        if (HasValidationError(TemplateFields) || HasValidationError(ElementsGrid))
+        {
+            PreviewStatus.Text = "Revise os valores inválidos para atualizar a prévia.";
+            return;
+        }
+        try
+        {
+            PlateRules.ValidateTemplate(editing);
+            var plate = renderer.Plate(editing, Example());
+            TemplatePreview.Child = plate;
+            PreviewStatus.Text = "Prévia atualizada automaticamente. Clique em Salvar layout para guardar as alterações.";
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or FormatException)
+        {
+            PreviewStatus.Text = "Prévia: " + ex.Message;
+        }
+    }
     private void UpdateTemplatePreview()
     {
-        CommitEditor(); TemplatePreview.Child = renderer.Plate(editing!, Example());
+        CommitEditor();
+        RenderEditorPreviewSafely();
     }
     private void NewTemplateClick(object sender, RoutedEventArgs e) { editing = PlateTemplate.Default(); editing.Name = "Novo layout"; BindEditor(); }
     private void DuplicateTemplateClick(object sender, RoutedEventArgs e) => Run(() =>
@@ -254,11 +293,11 @@ public partial class MainWindow : Window
     {
         if (editing is null) return;
         editing.Elements.Add(new() { Text = "Novo texto", X = 0, Y = 0, Width = Math.Min(60, editing.WidthMm), Height = 15, FontSize = 15 });
-        ElementsGrid.Items.Refresh();
+        ElementsGrid.Items.Refresh(); QueueEditorPreview();
     });
     private void RemoveElementClick(object sender, RoutedEventArgs e)
     {
-        if (ElementsGrid.SelectedItem is PlateElement element) { editing?.Elements.Remove(element); ElementsGrid.Items.Refresh(); }
+        if (ElementsGrid.SelectedItem is PlateElement element) { editing?.Elements.Remove(element); ElementsGrid.Items.Refresh(); QueueEditorPreview(); }
     }
     private void TemplatePreviewClick(object sender, RoutedEventArgs e) => Run(UpdateTemplatePreview);
 
