@@ -19,6 +19,9 @@
               <TextBox x:Name="SearchText" Width="320" ToolTip="Código ou descrição" KeyDown="SearchKeyDown"/>
               <ComboBox x:Name="SourceFilter" Width="160" SelectedIndex="0"><ComboBoxItem Content="Todas as origens"/><ComboBoxItem Content="Catálogo"/><ComboBoxItem Content="Ofertas"/><ComboBoxItem Content="Promoções"/></ComboBox>
               <Button Content="Pesquisar" Click="SearchClick"/>
+              <Button Content="Novo registro" Click="NewProductClick"/>
+              <Button Content="Editar selecionado" Click="EditProductClick"/>
+              <Button Content="Excluir selecionado" Click="DeleteProductClick"/>
               <Button Content="Marcar exibidos" Click="SelectAllClick"/>
               <Button Content="Desmarcar" Click="ClearSelectionClick"/>
             </WrapPanel>
@@ -38,6 +41,14 @@
               <DataGridTextColumn Header="Preço" Binding="{Binding Item.Price, StringFormat=C2}" Width="90" IsReadOnly="True"/>
               <DataGridTextColumn Header="Normal" Binding="{Binding Item.NormalPrice, StringFormat=C2}" Width="90" IsReadOnly="True"/>
               <DataGridTextColumn Header="Origem" Binding="{Binding Origin}" Width="90" IsReadOnly="True"/>
+              <DataGridTextColumn Header="Família" Binding="{Binding Item.Family}" Width="130" IsReadOnly="True"/>
+              <DataGridTextColumn Header="Quantidade" Binding="{Binding Item.Quantity}" Width="100" IsReadOnly="True"/>
+              <DataGridTextColumn Header="Regra" Binding="{Binding Item.Rule}" Width="120" IsReadOnly="True"/>
+              <DataGridTextColumn Header="Início" Binding="{Binding Item.Start}" Width="105" IsReadOnly="True"/>
+              <DataGridTextColumn Header="Grupo" Binding="{Binding Item.GroupCode}" Width="100" IsReadOnly="True"/>
+              <DataGridTextColumn Header="Arquivo" Binding="{Binding Item.FileName}" Width="160" IsReadOnly="True"/>
+              <DataGridTextColumn Header="Aba" Binding="{Binding Item.Sheet}" Width="100" IsReadOnly="True"/>
+              <DataGridTextColumn Header="Linha" Binding="{Binding Item.Row}" Width="65" IsReadOnly="True"/>
               <DataGridTextColumn Header="Validade" Binding="{Binding Item.End}" Width="100" IsReadOnly="True"/>
               <DataGridTextColumn Header="Revisão" Binding="{Binding Review}" Width="130" IsReadOnly="True"/>
             </DataGrid.Columns>
@@ -59,7 +70,7 @@
               <TextBlock Text="Altura mm" VerticalAlignment="Center"/><TextBox Text="{Binding HeightMm}" Width="65"/>
               <TextBlock Text="Fundo" VerticalAlignment="Center"/><TextBox Text="{Binding Background}" Width="110"/>
             </WrapPanel>
-            <TextBlock Text="Campos: {descricao}  {codigo}  {preco}  {preco_normal}  {validade}  {condicao}" Margin="4,4,0,8"/>
+            <TextBlock Text="Campos: {descricao}  {codigo}  {preco}  {preco_normal}  {validade}  {condicao}  {quantidade}  {familia}" Margin="4,4,0,8"/>
             <TextBlock x:Name="PreviewStatus" Text="Prévia automática ativada. Alterações são mostradas conforme você edita." Foreground="#526172" Margin="4,0,0,8"/>
           </StackPanel>
           <Grid>
