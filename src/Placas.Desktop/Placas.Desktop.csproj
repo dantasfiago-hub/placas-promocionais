@@ -1,9 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net10.0-windows</TargetFramework><UseWPF>true</UseWPF><OutputType>WinExe</OutputType>
+    <ApplicationIcon>Assets/placas.ico</ApplicationIcon>
     <AssemblyName>PlacasPromocionais</AssemblyName><Version>0.1.0</Version>
   </PropertyGroup>
   <ItemGroup>
+    <Resource Include="Assets/placas.ico" />
     <ProjectReference Include="../Placas.Infrastructure/Placas.Infrastructure.csproj" />
     <ProjectReference Include="../Placas.Rendering/Placas.Rendering.csproj" />
   </ItemGroup>
