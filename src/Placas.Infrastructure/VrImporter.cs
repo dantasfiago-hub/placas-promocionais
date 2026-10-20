@@ -110,7 +110,7 @@ public sealed class VrImporter : ISpreadsheetImporter
                 items.Add(new(id, key, code, description, price, normal, start, end, kind, group,
                     kind == SourceKind.Promotion ? quantity : 1,
                     kind == SourceKind.Promotion && quantity > 1 ? QuantityRule.Pending : QuantityRule.UnitPrice,
-                    file, sheet, i + 1));
+                    file, sheet, i + 1, Text(Cell("familia")) is { Length: > 0 } family ? family : null));
             }
             catch (Exception ex) when (ex is FormatException or OverflowException or ArgumentException)
             {

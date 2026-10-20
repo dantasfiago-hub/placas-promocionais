@@ -145,6 +145,106 @@ public partial class MainWindow : Window
         Status.Text = $"Limpeza concluída: {removed} condições removidas. Backup: {backup}";
     });
 
+
+    private void NewProductClick(object sender, RoutedEventArgs e) => Run(() =>
+    {
+        var item = new PriceItem("manual:" + Guid.NewGuid().ToString("N"), "1", "1", "",
+            0, null, null, null, SourceKind.Catalog, null, 1, QuantityRule.UnitPrice,
+            "Cadastro manual", "", 0);
+        EditProductDialog(item, true);
+    });
+    private void EditProductClick(object sender, RoutedEventArgs e) => Run(() =>
+    {
+        if (ProductsGrid.SelectedItem is not ProductRow selected)
+            throw new InvalidOperationException("Selecione um produto, oferta ou promoção.");
+        EditProductDialog(selected.Item, false);
+    });
+    private void DeleteProductClick(object sender, RoutedEventArgs e) => Run(() =>
+    {
+        if (ProductsGrid.SelectedItem is not ProductRow selected)
+            throw new InvalidOperationException("Selecione um registro.");
+        if (MessageBox.Show(this, $"Excluir '{selected.Item.Description}'? O histórico já impresso será preservado.",
+            "Confirmar exclusão", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+        var backup = BackupBeforeMaintenance();
+        store.DeleteItem(selected.Item.Id);
+        foreach (var row in basket.Where(x => x.Item.Id == selected.Item.Id).ToList()) basket.Remove(row);
+        InvalidatePreview(); RefreshProducts(); RefreshImports();
+        Status.Text = $"Registro excluído. Backup: {backup}";
+    });
+    private void EditProductDialog(PriceItem item, bool creating)
+    {
+        var window = new Window
+        {
+            Owner = this, Title = creating ? "Cadastrar produto / condição" : "Editar produto / condição",
+            Width = 650, Height = 770, MinHeight = 550, WindowStartupLocation = WindowStartupLocation.CenterOwner
+        };
+        var panel = new StackPanel { Margin = new Thickness(20) };
+        var controls = new Dictionary<string, TextBox>();
+        TextBox Field(string caption, string value)
+        {
+            panel.Children.Add(new TextBlock { Text = caption, Margin = new Thickness(0, 8, 0, 2) });
+            var box = new TextBox { Text = value, MinWidth = 420 };
+            panel.Children.Add(box); controls[caption] = box; return box;
+        }
+        Field("Código", item.DisplayCode);
+        Field("Descrição", item.Description);
+        Field("Família", item.Family ?? "");
+        Field("Preço", item.Price.ToString(CultureInfo.CurrentCulture));
+        Field("Preço normal (opcional)", item.NormalPrice?.ToString(CultureInfo.CurrentCulture) ?? "");
+        Field("Quantidade", item.Quantity.ToString(CultureInfo.CurrentCulture));
+        Field("Data início (dd/MM/aaaa, opcional)", item.Start?.ToString("dd/MM/yyyy") ?? "");
+        Field("Data término (dd/MM/aaaa, opcional)", item.End?.ToString("dd/MM/yyyy") ?? "");
+        Field("Código do grupo (opcional)", item.GroupCode ?? "");
+        Field("Arquivo de origem", item.FileName);
+        Field("Aba", item.Sheet);
+        Field("Linha", item.Row.ToString(CultureInfo.InvariantCulture));
+        panel.Children.Add(new TextBlock { Text = "Origem", Margin = new Thickness(0, 8, 0, 2) });
+        var sources = new ComboBox { ItemsSource = Enum.GetValues<SourceKind>(), SelectedItem = item.Source };
+        panel.Children.Add(sources);
+        panel.Children.Add(new TextBlock { Text = "Regra da quantidade", Margin = new Thickness(0, 8, 0, 2) });
+        var rules = new ComboBox { ItemsSource = Enum.GetValues<QuantityRule>(), SelectedItem = item.Rule };
+        panel.Children.Add(rules);
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+        var save = new Button { Content = "Salvar alterações" };
+        var cancel = new Button { Content = "Cancelar" };
+        cancel.Click += (_, _) => window.DialogResult = false;
+        save.Click += (_, _) =>
+        {
+            try
+            {
+                string Value(string key) => controls[key].Text.Trim();
+                decimal ParseMoney(string key) => decimal.Parse(Value(key), NumberStyles.Number, CultureInfo.CurrentCulture);
+                DateOnly? ParseDate(string key) => Value(key).Length == 0
+                    ? null : DateOnly.ParseExact(Value(key), "dd/MM/yyyy", CultureInfo.GetCultureInfo("pt-BR"));
+                var revised = item with
+                {
+                    DisplayCode = Value("Código"), Description = Value("Descrição"),
+                    Family = Value("Família"), Price = ParseMoney("Preço"),
+                    NormalPrice = Value("Preço normal (opcional)").Length == 0 ? null : ParseMoney("Preço normal (opcional)"),
+                    Quantity = ParseMoney("Quantidade"),
+                    Start = ParseDate("Data início (dd/MM/aaaa, opcional)"),
+                    End = ParseDate("Data término (dd/MM/aaaa, opcional)"),
+                    GroupCode = Value("Código do grupo (opcional)"),
+                    FileName = Value("Arquivo de origem"), Sheet = Value("Aba"),
+                    Row = int.Parse(Value("Linha"), CultureInfo.InvariantCulture),
+                    Source = (SourceKind)sources.SelectedItem!,
+                    Rule = (QuantityRule)rules.SelectedItem!
+                };
+                store.SaveItem(revised);
+                foreach (var row in basket.Where(x => x.Item.Id == item.Id)) row.Item = revised with { Code = ProductCode.Normalize(revised.DisplayCode) };
+                InvalidatePreview(); BatchGrid.Items.Refresh(); RefreshProducts();
+                window.DialogResult = true;
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or FormatException or OverflowException)
+            {
+                MessageBox.Show(window, ex.Message, "Revise os dados", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        };
+        buttons.Children.Add(save); buttons.Children.Add(cancel); panel.Children.Add(buttons);
+        window.Content = new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        window.ShowDialog();
+    }
+
     private void RefreshProducts()
     {
         SourceKind? source = SourceFilter.SelectedIndex == 0 ? null : (SourceKind)(SourceFilter.SelectedIndex - 1);

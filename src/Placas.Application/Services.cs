@@ -23,6 +23,8 @@ public sealed record ImportRecord(
 public interface IStore
 {
     bool Import(ImportBatch batch);
+    void SaveItem(PriceItem item);
+    void DeleteItem(string id);
 
     List<ImportRecord> ListImports();
 
