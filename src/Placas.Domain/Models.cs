@@ -111,6 +111,8 @@ public static class PlateRules
         if (template.Elements.Any(x => x.Text.Contains("{preco_normal}")) &&
             (item.NormalPrice is null || item.NormalPrice <= item.Price))
             throw new InvalidOperationException($"{item.DisplayCode}: preço normal ausente ou menor/igual ao promocional.");
+        if (item.Quantity > 1 && !template.Elements.Any(x => x.Text.Contains("{condicao}") || x.Text.Contains("{quantidade}")))
+            throw new InvalidOperationException("Promoções por quantidade exigem {condicao} ou {quantidade} no layout.");
         
     }
 
@@ -129,6 +131,6 @@ public static class PlateRules
             .Replace("{quantidade}", item.Quantity.ToString("0.##", Pt))
             .Replace("{preco_normal}", item.NormalPrice?.ToString("C2", Pt) ?? "")
             .Replace("{validade}", item.End is { } end ? $"Válido até {end:dd/MM/yyyy}" : "")
-            .Replace("{q}", condition);
+            .Replace("{condicao}", condition);
     }
 }
