@@ -70,7 +70,7 @@ public sealed class PlateTemplate
 public static class PlateRules
 {
     private static readonly CultureInfo Pt = CultureInfo.GetCultureInfo("pt-BR");
-    public static readonly string[] Tokens = ["descricao", "codigo", "preco", "preco_normal", "validade", "condicao"];
+    public static readonly string[] Tokens = ["descricao", "codigo", "preco", "preco_normal", "validade", "condicao","quantidade"];
     public static void ValidateTemplate(PlateTemplate template)
     {
         if (template.SchemaVersion != 1 || string.IsNullOrWhiteSpace(template.Name))
@@ -111,8 +111,7 @@ public static class PlateRules
         if (template.Elements.Any(x => x.Text.Contains("{preco_normal}")) &&
             (item.NormalPrice is null || item.NormalPrice <= item.Price))
             throw new InvalidOperationException($"{item.DisplayCode}: preço normal ausente ou menor/igual ao promocional.");
-        if (item.Quantity > 1 && !template.Elements.Any(x => x.Text.Contains("{condicao}")))
-            throw new InvalidOperationException("Este produto exige um modelo com o campo {condicao}.");
+        
     }
 
     public static string Resolve(string text, PriceItem item)
@@ -123,10 +122,13 @@ public static class PlateRules
             QuantityRule.UnitPrice => $"Preço por unidade na compra de {item.Quantity.ToString("0.##", Pt)}",
             _ => "CONDIÇÃO NÃO CONFIRMADA"
         };
-        return text.Replace("{descricao}", item.Description).Replace("{codigo}", item.DisplayCode)
+        return text
+            .Replace("{descricao}", item.Description)
+            .Replace("{codigo}", item.DisplayCode)
             .Replace("{preco}", item.Price.ToString("C2", Pt))
+            .Replace("{quantidade}", item.Quantity.ToString("0.##", Pt))
             .Replace("{preco_normal}", item.NormalPrice?.ToString("C2", Pt) ?? "")
             .Replace("{validade}", item.End is { } end ? $"Válido até {end:dd/MM/yyyy}" : "")
-            .Replace("{condicao}", condition);
+            .Replace("{q}", condition);
     }
 }
