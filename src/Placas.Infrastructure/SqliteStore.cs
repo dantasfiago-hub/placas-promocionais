@@ -109,6 +109,14 @@ public sealed class SqliteStore : IStore
         tx.Commit(); return removed;
     }
 
+    public int CountExpired(DateOnly date)
+    {
+        using var db = Open(); using var cmd = db.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM items WHERE source IN (1,2) AND json_extract(json,'$.End') IS NOT NULL AND json_extract(json,'$.End') < $today";
+        cmd.Parameters.AddWithValue("$today", date.ToString("yyyy-MM-dd"));
+        return Convert.ToInt32(cmd.ExecuteScalar());
+    }
+
     public int DeleteExpired(DateOnly date)
     {
         using var db = Open(); using var tx = db.BeginTransaction();
