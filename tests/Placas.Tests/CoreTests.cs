@@ -146,6 +146,19 @@ public class CoreTests
         template.Elements[0].Text = "Changed";
         Assert.Equal("OFERTA", batch.Template.Elements[0].Text); Assert.Equal(3, batch.Items[0].Copies);
     }
+    [Fact] public void PageFitErrorExplainsExactOverflowAndCorrection()
+    {
+        var plate = PlateTemplate.Default();
+        plate.WidthMm = 150;
+        plate.HeightMm = 210;
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            Pagination.Grid(148, 210, 5, 0, plate));
+        Assert.Contains("Papel: 148", ex.Message);
+        Assert.Contains("Placa: 150", ex.Message);
+        Assert.Contains("Excesso: 12", ex.Message);
+        Assert.Contains("papel maior", ex.Message);
+    }
+
     [Fact] public void FourCompactSignsFitA4ButFourFullA6DoNotFitWithMargins()
     {
         Assert.Equal((2, 2), Pagination.Grid(210, 297, 7, 3, PlateTemplate.Default()));
