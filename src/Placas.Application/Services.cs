@@ -8,9 +8,14 @@ public interface ISpreadsheetImporter
     ImportBatch Read(string path, CancellationToken cancellationToken = default);
 }
 
+public sealed record ImportSummary(string Hash, string FileName, string ImportedAt, int ItemCount);
+
 public interface IStore
 {
     bool Import(ImportBatch batch);
+    List<ImportSummary> ListImports();
+    int DeleteImport(string hash);
+    int DeleteExpired(DateOnly asOf);
     List<PriceItem> Search(string text, SourceKind? source, int limit = 500);
     void ConfirmPromotion(string itemId, QuantityRule rule);
     List<PlateTemplate> Templates();
