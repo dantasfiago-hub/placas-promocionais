@@ -11,6 +11,29 @@ public class CoreTests
         new(2026, 1, 1), new(2026, 12, 31), SourceKind.Offer, null, 1, QuantityRule.UnitPrice, "fixture.xls", "Sheet0", 2);
     private static DateOnly Date => new(2026, 10, 19);
 
+    [Fact] public void ImportManagementRemovesOnlyExpiredAndPreservesCatalog()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var store = new SqliteStore(Path.Combine(dir, "test.db"));
+            var expired = Item() with { Id = "expired", End = new DateOnly(2026, 3, 1) };
+            var current = Item() with { Id = "current", End = new DateOnly(2026, 12, 31) };
+            var catalog = Item() with { Id = "catalog", Source = SourceKind.Catalog, End = null };
+            Assert.True(store.Import(new ImportBatch("old-hash", "offer.xlsx", [expired, current], [])));
+            Assert.True(store.Import(new ImportBatch("catalog-hash", "database.xlsx", [catalog], [])));
+            Assert.Equal(1, store.CountExpired(new DateOnly(2026, 10, 20)));
+            Assert.Equal(1, store.DeleteExpired(new DateOnly(2026, 10, 20)));
+            Assert.Equal(2, store.Search("", null).Count);
+            Assert.Equal(1, store.DeleteImport("old-hash"));
+            Assert.Single(store.Search("", null));
+            Assert.Equal(SourceKind.Catalog, store.Search("", null)[0].Source);
+            Assert.Single(store.ListImports().Where(x => x.Managed));
+        }
+        finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(dir, true); }
+    }
+
     [Fact] public void CodesNormalizeWithoutLosingOriginal()
     {
         Assert.Equal("10486", ProductCode.Normalize("010486"));
