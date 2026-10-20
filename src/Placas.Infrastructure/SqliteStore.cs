@@ -55,8 +55,18 @@ public sealed class SqliteStore : IStore
         command.Prepare();
         foreach (var item in batch.Items)
         {
-            id.Value = item.Id; code.Value = item.Code; search.Value = SearchKey(item.Description);
-            source.Value = (int)item.Source; json.Value = JsonSerializer.Serialize(item);
+            // A família vem do catálogo, quando o relatório de oferta/promoção não a informa.
+            var imported = item;
+            if (item.Source != SourceKind.Catalog && string.IsNullOrWhiteSpace(item.Family))
+            {
+                using var familyQuery = db.CreateCommand(); familyQuery.Transaction = transaction;
+                familyQuery.CommandText = "SELECT json FROM items WHERE code=$code AND source=0 LIMIT 1";
+                familyQuery.Parameters.AddWithValue("$code", item.Code);
+                if (familyQuery.ExecuteScalar() is string catalogJson)
+                    imported = item with { Family = JsonSerializer.Deserialize<PriceItem>(catalogJson)?.Family };
+            }
+            id.Value = imported.Id; code.Value = imported.Code; search.Value = SearchKey(imported.Description);
+            source.Value = (int)imported.Source; json.Value = JsonSerializer.Serialize(imported);
             command.ExecuteNonQuery();
         }
         using var link = db.CreateCommand(); link.Transaction = transaction;
@@ -64,7 +74,64 @@ public sealed class SqliteStore : IStore
         link.Parameters.AddWithValue("$hash", batch.Hash);
         var linkedId = link.Parameters.Add("$id", SqliteType.Text);
         foreach (var item in batch.Items) { linkedId.Value = item.Id; link.ExecuteNonQuery(); }
+        // Atualiza a família das condições existentes ao importar um catálogo posteriormente.
+        if (batch.Items.Any(x => x.Source == SourceKind.Catalog && !string.IsNullOrWhiteSpace(x.Family)))
+        {
+            using var select = db.CreateCommand(); select.Transaction = transaction;
+            select.CommandText = "SELECT id,json FROM items WHERE source<>0";
+            var changes = new List<PriceItem>();
+            using (var reader = select.ExecuteReader())
+                while (reader.Read())
+                {
+                    var existing = JsonSerializer.Deserialize<PriceItem>(reader.GetString(1))!;
+                    var catalog = batch.Items.FirstOrDefault(x => x.Source == SourceKind.Catalog && x.Code == existing.Code);
+                    if (catalog is not null && !string.IsNullOrWhiteSpace(catalog.Family) && string.IsNullOrWhiteSpace(existing.Family))
+                        changes.Add(existing with { Family = catalog.Family });
+                }
+            foreach (var updated in changes)
+            {
+                using var update = db.CreateCommand(); update.Transaction = transaction;
+                update.CommandText = "UPDATE items SET json=$json WHERE id=$id";
+                update.Parameters.AddWithValue("$id", updated.Id);
+                update.Parameters.AddWithValue("$json", JsonSerializer.Serialize(updated));
+                update.ExecuteNonQuery();
+            }
+        }
         transaction.Commit(); return true;
+    }
+
+
+    public void SaveItem(PriceItem item)
+    {
+        if (string.IsNullOrWhiteSpace(item.Description) || string.IsNullOrWhiteSpace(item.DisplayCode))
+            throw new InvalidOperationException("Código e descrição são obrigatórios.");
+        if (item.Price < 0 || item.NormalPrice < 0 || item.Quantity < 1 ||
+            item.Start > item.End || (item.Source == SourceKind.Promotion && item.Quantity != decimal.Truncate(item.Quantity)))
+            throw new InvalidOperationException("Preço, quantidade ou período inválidos.");
+        var normalized = item with { Code = ProductCode.Normalize(item.DisplayCode) };
+        using var db = Open(); using var command = db.CreateCommand();
+        command.CommandText = """
+            INSERT INTO items(id,code,search,source,json) VALUES($id,$code,$search,$source,$json)
+            ON CONFLICT(id) DO UPDATE SET code=$code, search=$search, source=$source, json=$json
+            """;
+        command.Parameters.AddWithValue("$id", normalized.Id);
+        command.Parameters.AddWithValue("$code", normalized.Code);
+        command.Parameters.AddWithValue("$search", SearchKey(normalized.Description));
+        command.Parameters.AddWithValue("$source", (int)normalized.Source);
+        command.Parameters.AddWithValue("$json", JsonSerializer.Serialize(normalized));
+        command.ExecuteNonQuery();
+    }
+
+    public void DeleteItem(string id)
+    {
+        using var db = Open(); using var tx = db.BeginTransaction();
+        using var links = db.CreateCommand(); links.Transaction = tx;
+        links.CommandText = "DELETE FROM import_items WHERE item_id=$id";
+        links.Parameters.AddWithValue("$id", id); links.ExecuteNonQuery();
+        using var command = db.CreateCommand(); command.Transaction = tx;
+        command.CommandText = "DELETE FROM items WHERE id=$id";
+        command.Parameters.AddWithValue("$id", id); command.ExecuteNonQuery();
+        tx.Commit();
     }
 
     public List<ImportRecord> ListImports()
