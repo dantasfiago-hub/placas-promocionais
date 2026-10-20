@@ -1,0 +1,114 @@
+using Placas.Application;
+using Placas.Domain;
+using Placas.Infrastructure;
+using Xunit;
+
+namespace Placas.Tests;
+
+public class CoreTests
+{
+    private static PriceItem Item(decimal price = 5.69m) => new("offer:1", "1", "000001", "Produto teste", price, 7.99m,
+        new(2026, 1, 1), new(2026, 12, 31), SourceKind.Offer, null, 1, QuantityRule.UnitPrice, "fixture.xls", "Sheet0", 2);
+    private static DateOnly Date => new(2026, 10, 19);
+
+    [Fact] public void CodesNormalizeWithoutLosingOriginal()
+    {
+        Assert.Equal("10486", ProductCode.Normalize("010486"));
+        Assert.Equal("0", ProductCode.Normalize("000"));
+        Assert.Throws<FormatException>(() => ProductCode.Normalize("12A"));
+    }
+    [Fact] public void ParsesHierarchyAndDoesNotTreatGroupAsProduct()
+    {
+        object?[][] rows = [
+            ["Código", "Descrição", "Data Início", "Data Término", "Valor Final", "Quantidade"],
+            ["024803", "SORVETE", "30/09/2026 - QUA", "31/12/2026 - QUI", "", 2],
+            ["", "051210 - SORV KIBON MINI", "", "", 10d, ""]
+        ];
+        var batch = VrImporter.ParseRows(rows, "test.xlsx", "Sheet0", "a")!;
+        Assert.Empty(batch.Issues); var item = Assert.Single(batch.Items);
+        Assert.Equal("51210", item.Code); Assert.Equal("24803", item.GroupCode);
+        Assert.Equal(2m, item.Quantity); Assert.Equal(QuantityRule.Pending, item.Rule);
+        Assert.Equal(new DateOnly(2026, 12, 31), item.End);
+    }
+    [Fact] public void InvalidGroupDoesNotLeakPreviousGroup()
+    {
+        object?[][] rows = [
+            ["Código", "Descrição", "Data Início", "Data Término", "Valor Final", "Quantidade"],
+            ["1", "Valid", "01/01/2026", "31/12/2026", "", 1],
+            ["2", "Bad", "not a date", "31/12/2026", "", 1],
+            ["", "003 - orphan", "", "", 10, ""]
+        ];
+        var batch = VrImporter.ParseRows(rows, "test.xlsx", "Sheet0", "a")!;
+        Assert.Empty(batch.Items); Assert.Equal(2, batch.Issues.Count);
+    }
+    [Fact] public void FindsReorderedHeadersAndBrazilianDecimal()
+    {
+        object?[][] rows = [["Relatório"], ["Descrição", "Preço Venda", "Produto"], ["Teste", "1.234,56", "001"]];
+        var batch = VrImporter.ParseRows(rows, "test.xlsx", "Sheet0", "a")!;
+        Assert.Equal(1234.56m, Assert.Single(batch.Items).Price);
+    }
+    [Fact] public void DuplicateConditionsAreRejectedInsteadOfOverwritten()
+    {
+        object?[][] rows = [["Produto", "Descrição", "Preço Venda"], [1, "A", 10], [1, "B", 20]];
+        var batch = VrImporter.ParseRows(rows, "test.xlsx", "Sheet0", "a")!;
+        Assert.Empty(batch.Items); Assert.Equal(2, batch.Issues.Count);
+    }
+    [Fact] public void ZeroPriceCannotPrint()
+        => Assert.Throws<InvalidOperationException>(() => new BatchService().Create([new(Item(0), 1)], PlateTemplate.Default(), Date));
+    [Fact] public void ExpiredOfferCannotPrint()
+        => Assert.Throws<InvalidOperationException>(() => new BatchService().Create([new(Item(), 1)], PlateTemplate.Default(), new(2027, 1, 1)));
+    [Fact] public void PendingPromotionCannotPrint()
+        => Assert.Throws<InvalidOperationException>(() => new BatchService().Create([new(Item() with { Source = SourceKind.Promotion, Quantity = 2, Rule = QuantityRule.Pending }, 1)], PlateTemplate.Default(), Date));
+    [Fact] public void QuantityConditionMustBeVisible()
+    {
+        var template = PlateTemplate.Default(); template.Elements.RemoveAll(x => x.Text.Contains("{condicao}"));
+        Assert.Throws<InvalidOperationException>(() => new BatchService().Create([new(Item() with { Quantity = 2, Rule = QuantityRule.BundleTotal }, 1)], template, Date));
+    }
+    [Fact] public void DoesNotInventNormalPrice()
+    {
+        var template = PlateTemplate.Default(); template.Elements[1].Text = "De {preco_normal}";
+        Assert.Throws<InvalidOperationException>(() => new BatchService().Create([new(Item() with { NormalPrice = null }, 1)], template, Date));
+    }
+    [Fact] public void ConflictingConditionsCannotEnterSameBatch()
+        => Assert.Throws<InvalidOperationException>(() => new BatchService().Create([new(Item(), 1), new(Item() with { Id = "other" }, 1)], PlateTemplate.Default(), Date));
+    [Fact] public void SnapshotIsIndependentOfTemplateEdits()
+    {
+        var template = PlateTemplate.Default();
+        var batch = new BatchService().Create([new(Item(), 3)], template, Date);
+        template.Elements[0].Text = "Changed";
+        Assert.Equal("OFERTA", batch.Template.Elements[0].Text); Assert.Equal(3, batch.Items[0].Copies);
+    }
+    [Fact] public void FourCompactSignsFitA4ButFourFullA6DoNotFitWithMargins()
+    {
+        Assert.Equal((2, 2), Pagination.Grid(210, 297, 7, 3, PlateTemplate.Default()));
+        var fullA6 = PlateTemplate.Default(); fullA6.WidthMm = 105; fullA6.HeightMm = 148;
+        Assert.Equal((1, 1), Pagination.Grid(210, 297, 7, 3, fullA6));
+    }
+    [Fact] public void TemplateRejectsOutOfBoundsAndUnknownFields()
+    {
+        var template = PlateTemplate.Default(); template.Elements[0].X = 100;
+        Assert.Throws<InvalidOperationException>(() => PlateRules.ValidateTemplate(template));
+        template.Elements[0].X = 0; template.Elements[0].Text = "{inexistente}";
+        Assert.Throws<InvalidOperationException>(() => PlateRules.ValidateTemplate(template));
+    }
+    [Fact] public void SqliteImportIsIdempotentAndPreservesExactDecimalsAndHistory()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")); Directory.CreateDirectory(directory);
+        try
+        {
+            var store = new SqliteStore(Path.Combine(directory, "test.db"));
+            var item = Item(2.2735m);
+            var import = new ImportBatch("same-hash", "fixture.xls", [item], []);
+            Assert.True(store.Import(import)); Assert.False(store.Import(import));
+            Assert.Equal(2.2735m, Assert.Single(store.Search("000001", null)).Price);
+            var template = PlateTemplate.Default(); store.SaveTemplate(template);
+            var batch = new BatchService().Create([new(item, 1)], template, Date);
+            store.SaveHistory(batch, "Prévia", "teste");
+            template.Name = "Changed"; store.SaveTemplate(template);
+            Assert.NotEqual("Changed", Assert.Single(store.History()).Batch.Template.Name);
+            store.Backup(Path.Combine(directory, "backup.db"));
+            Assert.Single(new SqliteStore(Path.Combine(directory, "backup.db")).Search("", null));
+        }
+        finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(directory, true); }
+    }
+}

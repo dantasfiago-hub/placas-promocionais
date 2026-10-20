@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Placas.Domain/Placas.Domain.csproj" />
+    <Project Path="src/Placas.Application/Placas.Application.csproj" />
+    <Project Path="src/Placas.Infrastructure/Placas.Infrastructure.csproj" />
+    <Project Path="src/Placas.Rendering/Placas.Rendering.csproj" />
+    <Project Path="src/Placas.Desktop/Placas.Desktop.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Placas.Tests/Placas.Tests.csproj" />
+  </Folder>
+</Solution>

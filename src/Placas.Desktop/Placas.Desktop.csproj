@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework><UseWPF>true</UseWPF><OutputType>WinExe</OutputType>
+    <AssemblyName>PlacasPromocionais</AssemblyName><Version>0.1.0</Version>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Placas.Infrastructure/Placas.Infrastructure.csproj" />
+    <ProjectReference Include="../Placas.Rendering/Placas.Rendering.csproj" />
+  </ItemGroup>
+</Project>
