@@ -34,6 +34,51 @@ public class CoreTests
         finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(dir, true); }
     }
 
+
+    [Fact] public void QuantityAndFamilyTokensResolve()
+    {
+        var template = PlateTemplate.Default();
+        template.Elements[3].Text = "{quantidade}X";
+        PlateRules.ValidateTemplate(template);
+        var product = Item() with { Quantity = 5, Family = "BEBIDAS", Source = SourceKind.Promotion, Rule = QuantityRule.UnitPrice };
+        Assert.Equal("5X - BEBIDAS", PlateRules.Resolve("{quantidade}X - {familia}", product));
+        Assert.NotNull(new BatchService().Create([new(product, 1)], template, Date));
+    }
+
+    [Fact] public void ManualCrudPreservesEditedProduct()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var store = new SqliteStore(Path.Combine(dir, "test.db"));
+            var product = Item() with { Id = "manual:1", Family = "MERCEARIA" };
+            store.SaveItem(product);
+            Assert.Equal("MERCEARIA", Assert.Single(store.Search("000001", null)).Family);
+            store.SaveItem(product with { Description = "Outro nome", Quantity = 2 });
+            Assert.Equal(2, Assert.Single(store.Search("Outro nome", null)).Quantity);
+            store.DeleteItem(product.Id);
+            Assert.Empty(store.Search("", null));
+        }
+        finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(dir, true); }
+    }
+
+    [Fact] public void CatalogFamilyIsAppliedToOfferImportedLater()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var store = new SqliteStore(Path.Combine(dir, "test.db"));
+            store.Import(new ImportBatch("catalog-family", "base.xlsx",
+                [Item() with { Id = "cat", Source = SourceKind.Catalog, Family = "LATICÍNIOS" }], []));
+            store.Import(new ImportBatch("offer-family", "oferta.xlsx",
+                [Item() with { Id = "off", Family = null }], []));
+            Assert.Equal("LATICÍNIOS", store.Search("", SourceKind.Offer).Single().Family);
+        }
+        finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(dir, true); }
+    }
+
     [Fact] public void CodesNormalizeWithoutLosingOriginal()
     {
         Assert.Equal("10486", ProductCode.Normalize("010486"));
