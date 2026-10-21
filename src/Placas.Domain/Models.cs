@@ -70,7 +70,7 @@ public sealed class PlateTemplate
 public static class PlateRules
 {
     private static readonly CultureInfo Pt = CultureInfo.GetCultureInfo("pt-BR");
-    public static readonly string[] Tokens = ["descricao", "codigo", "preco", "preco_normal", "validade", "condicao","quantidade","familia"];
+    public static readonly string[] Tokens = ["descricao", "codigo", "preco", "preco_normal","inicio", "validade", "condicao","quantidade","familia"];
     public static void ValidateTemplate(PlateTemplate template)
     {
         if (template.SchemaVersion != 1 || string.IsNullOrWhiteSpace(template.Name))
@@ -131,7 +131,8 @@ public static class PlateRules
             .Replace("{preco}", item.Price.ToString("C2", Pt))
             .Replace("{quantidade}", item.Quantity.ToString("0.##", Pt))
             .Replace("{preco_normal}", item.NormalPrice?.ToString("C2", Pt) ?? "")
-            .Replace("{validade}", item.End is { } end ? $"Válido até {end:dd/MM/yyyy}" : "")
-            .Replace("{condicao}", condition);
+            .Replace("{validade}", item.End is { } end ? $"{end:dd/MM/yyyy}" : "")
+            .Replace("{condicao}", condition)
+            .Replace("{inicio}", item.Start is { } start ? $"{start:dd/MM/yyyy}" : "");
     }
 }
