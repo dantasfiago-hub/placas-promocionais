@@ -29,7 +29,7 @@ public class CoreTests
             Assert.Equal(1, store.DeleteImport("old-hash"));
             Assert.Single(store.Search("", null));
             Assert.Equal(SourceKind.Catalog, store.Search("", null)[0].Source);
-            Assert.Single(store.ListImports().Where(x => x.Managed));
+           Assert.Single(store.ListImports(), x => x.Managed);
         }
         finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(dir, true); }
     }

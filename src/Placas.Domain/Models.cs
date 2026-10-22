@@ -127,9 +127,9 @@ public static class PlateRules
             .Replace("{descricao}", item.Description)
             .Replace("{familia}", item.Family ?? "")
             .Replace("{codigo}", item.DisplayCode)
-            .Replace("{preco}", item.Price.ToString("C2", Pt))
+            .Replace("{preco}", item.Price.ToString("N2", Pt))
+            .Replace("{preco_normal}", item.NormalPrice?.ToString("N2", Pt) ?? "")
             .Replace("{quantidade}", item.Quantity.ToString("0.##", Pt))
-            .Replace("{preco_normal}", item.NormalPrice?.ToString("C2", Pt) ?? "")
             .Replace("{validade}", item.End is { } end ? $"{end:dd/MM/yyyy}" : "")
             .Replace("{condicao}", condition)
             .Replace("{inicio}", item.Start is { } start ? $"{start:dd/MM/yyyy}" : "");
