@@ -22,6 +22,7 @@ public sealed class PlateRenderer
             {
                 Text = PlateRules.Resolve(element.Text, item), FontFamily = new FontFamily("Segoe UI"),
                 FontWeight = element.Bold ? FontWeights.Bold : FontWeights.Normal,
+                FontStyle = element.Italic ? FontStyles.Italic : FontStyles.Normal,
                 Foreground = Brush(element.Foreground), TextAlignment = TextAlignment.Center,
                 TextWrapping = TextWrapping.Wrap, Width = Dip(element.Width), FontSize = element.FontSize
             };
