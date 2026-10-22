@@ -29,7 +29,7 @@ public class CoreTests
             Assert.Equal(1, store.DeleteImport("old-hash"));
             Assert.Single(store.Search("", null));
             Assert.Equal(SourceKind.Catalog, store.Search("", null)[0].Source);
-           Assert.Single(store.ListImports(), x => x.Managed);
+            Assert.Single(store.ListImports(), x => x.Managed);
         }
         finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(dir, true); }
     }
@@ -225,5 +225,50 @@ public class CoreTests
             Assert.Single(new SqliteStore(Path.Combine(directory, "backup.db")).Search("", null));
         }
         finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(directory, true); }
+    }
+
+    [Fact] public void SubDescriptionTokenIsValidAndOptional()
+    {
+        var template = PlateTemplate.Default();
+        template.Elements[1].Text = "{descricao} {subdescricao}";
+        PlateRules.ValidateTemplate(template);
+        var filled = Item() with { Description = "ARROZ", SubDescription = "Tipo 1 - 5kg" };
+        Assert.Equal("ARROZ Tipo 1 - 5kg", PlateRules.Resolve("{descricao} {subdescricao}", filled));
+        Assert.Equal("ARROZ ", PlateRules.Resolve("{descricao} {subdescricao}", Item() with { Description = "ARROZ" }));
+        Assert.NotNull(new BatchService().Create([new(Item(), 1)], template, Date));
+    }
+
+    [Fact] public void SubDescriptionIsSavedAndOldItemsLoadWithoutIt()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var store = new SqliteStore(Path.Combine(dir, "test.db"));
+            store.SaveItem(Item() with { Id = "manual:sub", SubDescription = "Pacote 5kg" });
+            Assert.Equal("Pacote 5kg", Assert.Single(store.Search("", null)).SubDescription);
+            var old = System.Text.Json.JsonSerializer.Deserialize<PriceItem>(
+                System.Text.Json.JsonSerializer.Serialize(Item() with { Family = "X" })
+                    .Replace(",\"SubDescription\":null", ""))!;
+            Assert.Null(old.SubDescription);
+        }
+        finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(dir, true); }
+    }
+
+    [Fact] public void ReimportKeepsManualSubDescription()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var store = new SqliteStore(Path.Combine(dir, "test.db"));
+            store.Import(new ImportBatch("h1", "a.xlsx", [Item() with { Id = "x" }], []));
+            store.SaveItem(Item() with { Id = "x", SubDescription = "Pacote 5kg" });
+            store.Import(new ImportBatch("h2", "b.xlsx", [Item() with { Id = "x", Price = 6.99m }], []));
+            var saved = Assert.Single(store.Search("", null));
+            Assert.Equal(6.99m, saved.Price);
+            Assert.Equal("Pacote 5kg", saved.SubDescription);
+        }
+        finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(dir, true); }
     }
 }

@@ -205,6 +205,7 @@ public partial class MainWindow : Window
         }
         Field("Código", item.DisplayCode);
         Field("Descrição", item.Description);
+        Field("Subdescrição (opcional)", item.SubDescription ?? "");
         Field("Família", item.Family ?? "");
         Field("Preço", item.Price.ToString(CultureInfo.CurrentCulture));
         Field("Preço normal (opcional)", item.NormalPrice?.ToString(CultureInfo.CurrentCulture) ?? "");
@@ -236,7 +237,9 @@ public partial class MainWindow : Window
                 var revised = item with
                 {
                     DisplayCode = Value("Código"), Description = Value("Descrição"),
-                    Family = Value("Família"), Price = ParseMoney("Preço"),
+                    Family = Value("Família"),
+                    SubDescription = Value("Subdescrição (opcional)") is { Length: > 0 } sub ? sub : null,
+                    Price = ParseMoney("Preço"),
                     NormalPrice = Value("Preço normal (opcional)").Length == 0 ? null : ParseMoney("Preço normal (opcional)"),
                     Quantity = ParseMoney("Quantidade"),
                     Start = ParseDate("Data início (dd/MM/aaaa, opcional)"),

@@ -65,6 +65,16 @@ public sealed class SqliteStore : IStore
                 if (familyQuery.ExecuteScalar() is string catalogJson)
                     imported = item with { Family = JsonSerializer.Deserialize<PriceItem>(catalogJson)?.Family };
             }
+            // Preserva a subdescrição cadastrada manualmente quando o arquivo importado não a informa.
+            if (string.IsNullOrWhiteSpace(imported.SubDescription))
+            {
+                using var subQuery = db.CreateCommand(); subQuery.Transaction = transaction;
+                subQuery.CommandText = "SELECT json FROM items WHERE id=$id";
+                subQuery.Parameters.AddWithValue("$id", imported.Id);
+                if (subQuery.ExecuteScalar() is string existingJson &&
+                    JsonSerializer.Deserialize<PriceItem>(existingJson)?.SubDescription is { Length: > 0 } keptSub)
+                    imported = imported with { SubDescription = keptSub };
+            }
             id.Value = imported.Id; code.Value = imported.Code; search.Value = SearchKey(imported.Description);
             source.Value = (int)imported.Source; json.Value = JsonSerializer.Serialize(imported);
             command.ExecuteNonQuery();

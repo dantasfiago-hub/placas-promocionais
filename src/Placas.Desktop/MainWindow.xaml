@@ -41,6 +41,7 @@
               <DataGridTextColumn Header="Preço" Binding="{Binding Item.Price, StringFormat=C2}" Width="90" IsReadOnly="True"/>
               <DataGridTextColumn Header="Normal" Binding="{Binding Item.NormalPrice, StringFormat=C2}" Width="90" IsReadOnly="True"/>
               <DataGridTextColumn Header="Origem" Binding="{Binding Origin}" Width="90" IsReadOnly="True"/>
+              <DataGridTextColumn Header="Subdescrição" Binding="{Binding Item.SubDescription}" Width="200" IsReadOnly="True"/>
               <DataGridTextColumn Header="Família" Binding="{Binding Item.Family}" Width="130" IsReadOnly="True"/>
               <DataGridTextColumn Header="Quantidade" Binding="{Binding Item.Quantity}" Width="100" IsReadOnly="True"/>
               <DataGridTextColumn Header="Regra" Binding="{Binding Item.Rule}" Width="120" IsReadOnly="True"/>
@@ -70,7 +71,7 @@
               <TextBlock Text="Altura mm" VerticalAlignment="Center"/><TextBox Text="{Binding HeightMm}" Width="65"/>
               <TextBlock Text="Fundo" VerticalAlignment="Center"/><TextBox Text="{Binding Background}" Width="110"/>
             </WrapPanel>
-            <TextBlock Text="Campos: {descricao}  {codigo}  {preco}  {preco_normal}  {validade}  {condicao}  {quantidade}  {familia}" Margin="4,4,0,8"/>
+            <TextBlock Text="Campos: {descricao}  {codigo}  {preco}  {preco_normal}  {validade}  {condicao}  {quantidade}  {familia}  {subdescricao}" Margin="4,4,0,8"/>
             <TextBlock x:Name="PreviewStatus" Text="Prévia automática ativada. Alterações são mostradas conforme você edita." Foreground="#526172" Margin="4,0,0,8"/>
           </StackPanel>
           <Grid>
