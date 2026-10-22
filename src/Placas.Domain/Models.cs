@@ -77,18 +77,16 @@ public static class PlateRules
         if (template.SchemaVersion != 1 || string.IsNullOrWhiteSpace(template.Name))
             throw new InvalidOperationException("Modelo sem nome ou versão não suportada.");
         if (!double.IsFinite(template.WidthMm) || !double.IsFinite(template.HeightMm) ||
-            template.WidthMm < 20 || template.HeightMm < 20 || template.WidthMm > 1000 || template.HeightMm > 1000)
-            throw new InvalidOperationException("Dimensões do modelo devem estar entre 20 e 1000 mm.");
-        if (template.Elements is null || template.Elements.Count is < 1 or > 50)
-            throw new InvalidOperationException("O modelo deve conter entre 1 e 50 elementos.");
+            template.WidthMm <= 0 || template.HeightMm <= 0)
+            throw new InvalidOperationException("Largura e altura do modelo devem ser números maiores que zero.");
+        if (template.Elements is null || template.Elements.Count < 1)
+            throw new InvalidOperationException("O modelo deve conter pelo menos 1 elemento.");
         ValidateColor(template.Background);
         foreach (var e in template.Elements)
         {
             if (new[] { e.X, e.Y, e.Width, e.Height, e.FontSize, e.MinFontSize }.Any(x => !double.IsFinite(x)) ||
-                e.X < 0 || e.Y < 0 || e.Width <= 0 || e.Height <= 0 ||
-                e.X + e.Width > template.WidthMm + .001 || e.Y + e.Height > template.HeightMm + .001 ||
-                e.MinFontSize < 6 || e.FontSize < e.MinFontSize || e.FontSize > 300)
-                throw new InvalidOperationException("Elemento fora da placa ou tamanho de fonte inválido.");
+                e.Width <= 0 || e.Height <= 0 || e.FontSize <= 0 || e.MinFontSize <= 0)
+                throw new InvalidOperationException("Largura, altura e tamanhos de fonte devem ser números maiores que zero.");
             ValidateColor(e.Foreground); ValidateColor(e.Background);
             foreach (Match match in Regex.Matches(e.Text ?? "", @"\{([^{}]+)\}"))
                 if (!Tokens.Contains(match.Groups[1].Value))

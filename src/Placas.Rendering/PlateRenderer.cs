@@ -30,8 +30,7 @@ public sealed class PlateRenderer
             {
                 text.Measure(new Size(text.Width, double.PositiveInfinity));
                 if (text.DesiredSize.Height <= Dip(element.Height) && text.DesiredSize.Width <= text.Width + .01) break;
-                if (text.FontSize <= element.MinFontSize)
-                    throw new InvalidOperationException($"Texto de {item.DisplayCode} não cabe no elemento '{element.Text}'. Aumente a área no modelo.");
+                if (text.FontSize <= element.MinFontSize) break;   // antes: throw
                 text.FontSize = Math.Max(element.MinFontSize, text.FontSize - 1);
             }
             var border = new Border

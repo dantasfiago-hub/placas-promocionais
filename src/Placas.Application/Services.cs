@@ -127,47 +127,16 @@ public static class Pagination
         PlateTemplate template
     )
     {
-        if (!double.IsFinite(margin)
-            || !double.IsFinite(gap)
-            || margin < 0
-            || gap < 0)
-        {
+        if (!double.IsFinite(margin) || !double.IsFinite(gap))
             throw new InvalidOperationException(
-                $"Margem e espaçamento precisam ser números finitos e não negativos. " +
-                $"Margem informada: {margin:0.##} mm; espaçamento informado: {gap:0.##} mm."
+                "Margem e espaçamento precisam ser números válidos."
             );
-        }
 
-        var columns = (int)Math.Floor(
-            (pageWidthMm - 2 * margin + gap)
-            / (template.WidthMm + gap)
-        );
+        var columns = Math.Max(1, (int)Math.Floor(
+            (pageWidthMm - 2 * margin + gap) / (template.WidthMm + gap)));
 
-        var rows = (int)Math.Floor(
-            (pageHeightMm - 2 * margin + gap)
-            / (template.HeightMm + gap)
-        );
-
-        if (columns < 1 || rows < 1)
-        {
-            var availableWidth = pageWidthMm - 2 * margin;
-            var availableHeight = pageHeightMm - 2 * margin;
-            var overWidth = Math.Max(0, template.WidthMm - availableWidth);
-            var overHeight = Math.Max(0, template.HeightMm - availableHeight);
-            var maxMarginWidth = (pageWidthMm - template.WidthMm) / 2;
-            var maxMarginHeight = (pageHeightMm - template.HeightMm) / 2;
-            throw new InvalidOperationException(
-                $"O modelo não cabe no papel com estas margens.\n" +
-                $"Papel: {pageWidthMm:0.##} × {pageHeightMm:0.##} mm.\n" +
-                $"Placa: {template.WidthMm:0.##} × {template.HeightMm:0.##} mm.\n" +
-                $"Margem por lado: {margin:0.##} mm; espaçamento: {gap:0.##} mm.\n" +
-                $"Área disponível: {availableWidth:0.##} × {availableHeight:0.##} mm.\n" +
-                $"Excesso: {overWidth:0.##} mm na largura e {overHeight:0.##} mm na altura.\n" +
-                (maxMarginWidth < 0 || maxMarginHeight < 0
-                    ? "O modelo é maior que a folha: reduza a placa ou escolha um papel maior."
-                    : $"Para uma placa por folha, use margem de no máximo {Math.Min(maxMarginWidth, maxMarginHeight):0.##} mm por lado.")
-            );
-        }
+        var rows = Math.Max(1, (int)Math.Floor(
+            (pageHeightMm - 2 * margin + gap) / (template.HeightMm + gap)));
 
         return (columns, rows);
     }
