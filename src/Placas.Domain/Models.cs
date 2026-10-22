@@ -41,6 +41,7 @@ public sealed class PlateElement
     public string Foreground { get; set; } = "#111827";
     public string Background { get; set; } = "#00FFFFFF";
     public bool Bold { get; set; } = true;
+    public bool Italic { get; set; } = false; 
 }
 
 public sealed class PlateTemplate

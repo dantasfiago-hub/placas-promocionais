@@ -85,6 +85,7 @@
                   <DataGridTextColumn Header="Fonte" Binding="{Binding FontSize, UpdateSourceTrigger=PropertyChanged}" Width="50"/><DataGridTextColumn Header="Mín." Binding="{Binding MinFontSize, UpdateSourceTrigger=PropertyChanged}" Width="50"/>
                   <DataGridTextColumn Header="Cor" Binding="{Binding Foreground, UpdateSourceTrigger=PropertyChanged}" Width="90"/><DataGridTextColumn Header="Fundo" Binding="{Binding Background, UpdateSourceTrigger=PropertyChanged}" Width="100"/>
                   <DataGridCheckBoxColumn Header="Negrito" Binding="{Binding Bold, UpdateSourceTrigger=PropertyChanged}"/>
+                  <DataGridCheckBoxColumn Header="Itálico" Binding="{Binding Bold, UpdateSourceTrigger=PropertyChanged}"/>
                 </DataGrid.Columns>
               </DataGrid>
             </DockPanel>
