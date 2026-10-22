@@ -146,32 +146,66 @@ public class CoreTests
         template.Elements[0].Text = "Changed";
         Assert.Equal("OFERTA", batch.Template.Elements[0].Text); Assert.Equal(3, batch.Items[0].Copies);
     }
-    [Fact] public void PageFitErrorExplainsExactOverflowAndCorrection()
+
+    // Antes: PageFitErrorExplainsExactOverflowAndCorrection (lançava exceção).
+    // Agora uma placa maior que o papel ocupa 1 posição por página, sem erro.
+    [Fact] public void OversizedPlateStillGetsOneSlotPerPage()
     {
         var plate = PlateTemplate.Default();
         plate.WidthMm = 150;
         plate.HeightMm = 210;
-        var ex = Assert.Throws<InvalidOperationException>(() =>
-            Pagination.Grid(148, 210, 5, 0, plate));
-        Assert.Contains("Papel: 148", ex.Message);
-        Assert.Contains("Placa: 150", ex.Message);
-        Assert.Contains("Excesso: 12", ex.Message);
-        Assert.Contains("papel maior", ex.Message);
+        Assert.Equal((1, 1), Pagination.Grid(148, 210, 5, 0, plate));
     }
 
-    [Fact] public void FourCompactSignsFitA4ButFourFullA6DoNotFitWithMargins()
+    [Fact] public void FourCompactSignsFitA4ButFullA6GetsOneSlot()
     {
         Assert.Equal((2, 2), Pagination.Grid(210, 297, 7, 3, PlateTemplate.Default()));
         var fullA6 = PlateTemplate.Default(); fullA6.WidthMm = 105; fullA6.HeightMm = 148;
         Assert.Equal((1, 1), Pagination.Grid(210, 297, 7, 3, fullA6));
     }
-    [Fact] public void TemplateRejectsOutOfBoundsAndUnknownFields()
+
+    [Fact] public void GridRejectsNonFiniteMargins()
+        => Assert.Throws<InvalidOperationException>(() => Pagination.Grid(210, 297, double.NaN, 3, PlateTemplate.Default()));
+
+    // Antes: TemplateRejectsOutOfBoundsAndUnknownFields.
+    [Fact] public void TemplateRejectsUnknownFieldsAndNonPositiveSizes()
     {
-        var template = PlateTemplate.Default(); template.Elements[0].X = 100;
+        var template = PlateTemplate.Default();
+        template.Elements[0].Text = "{inexistente}";
         Assert.Throws<InvalidOperationException>(() => PlateRules.ValidateTemplate(template));
-        template.Elements[0].X = 0; template.Elements[0].Text = "{inexistente}";
+
+        template = PlateTemplate.Default();
+        template.Elements[0].Width = 0;
         Assert.Throws<InvalidOperationException>(() => PlateRules.ValidateTemplate(template));
+
+        template = PlateTemplate.Default();
+        template.Elements[0].X = 100; // fora da placa: agora é permitido
+        PlateRules.ValidateTemplate(template);
+
+        template = PlateTemplate.Default();
+        template.WidthMm = 5000; // sem limite máximo de dimensão
+        PlateRules.ValidateTemplate(template);
     }
+
+    [Fact] public void ItalicDefaultsToFalseAndSurvivesSnapshot()
+    {
+        var template = PlateTemplate.Default();
+        Assert.All(template.Elements, e => Assert.False(e.Italic));
+
+        template.Elements[1].Italic = true;
+        var batch = new BatchService().Create([new(Item(), 1)], template, Date);
+        Assert.True(batch.Template.Elements[1].Italic);
+        Assert.False(batch.Template.Elements[0].Italic);
+    }
+
+    [Fact] public void OldTemplateJsonWithoutItalicStillLoads()
+    {
+        var json = """{"SchemaVersion":1,"Name":"Antigo","WidthMm":95,"HeightMm":135,"Background":"#FFF03B","Elements":[{"Text":"{descricao}","X":5,"Y":30,"Width":90,"Height":30,"FontSize":24,"MinFontSize":9,"Foreground":"#111827","Background":"#00FFFFFF","Bold":true}]}""";
+        var template = System.Text.Json.JsonSerializer.Deserialize<PlateTemplate>(json)!;
+        Assert.False(template.Elements[0].Italic);
+        PlateRules.ValidateTemplate(template);
+    }
+
     [Fact] public void SqliteImportIsIdempotentAndPreservesExactDecimalsAndHistory()
     {
         var directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")); Directory.CreateDirectory(directory);
