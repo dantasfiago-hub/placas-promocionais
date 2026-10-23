@@ -21,12 +21,61 @@ namespace Placas.Desktop;
 
 public sealed class ProductRow(PriceItem item) : INotifyPropertyChanged
 {
+    private static readonly CultureInfo Pt = CultureInfo.GetCultureInfo("pt-BR");
     public PriceItem Item { get; } = item;
     private bool selected;
     public bool Selected { get => selected; set { selected = value; PropertyChanged?.Invoke(this, new(nameof(Selected))); } }
     public string Origin => Item.Source switch { SourceKind.Catalog => "Catálogo", SourceKind.Offer => "Oferta", _ => "Promoção" };
-    public string Review => Item.Price <= 0 ? "Preço zerado" : Item.Rule == QuantityRule.Pending ? "Confirmar regra" : "";
+
+    public bool IsExpired => Item.End is { } end && end < DateOnly.FromDateTime(DateTime.Today);
+    public bool IsFuture => Item.Start is { } start && start > DateOnly.FromDateTime(DateTime.Today);
+    // Nível usado para colorir a linha: expired, attention, zero, future ou ok.
+    public string Level => IsExpired ? "expired"
+        : Item.Rule == QuantityRule.Pending ? "attention"
+        : Item.Price <= 0 ? "zero"
+        : IsFuture ? "future" : "ok";
+    public string Situation => Level switch
+    {
+        "expired" => "Vencida",
+        "attention" => "Confirmar regra",
+        "zero" => "Preço zerado",
+        "future" => "Futura",
+        _ => Item.Source == SourceKind.Catalog ? "" : "Vigente"
+    };
+    public string Condition
+    {
+        get
+        {
+            if (Item.Quantity <= 1) return "";
+            var quantity = Item.Quantity.ToString("0.##", Pt);
+            return Item.Rule switch
+            {
+                QuantityRule.BundleTotal => $"{quantity} un. pelo total",
+                QuantityRule.UnitPrice => $"{quantity} un. • preço por unidade",
+                _ => $"{quantity} un. • a confirmar"
+            };
+        }
+    }
+    public string FamilyLabel => string.IsNullOrWhiteSpace(Item.Family) ? ""
+        : string.IsNullOrWhiteSpace(Item.FamilyDescription) ? Item.Family! : $"{Item.Family} - {Item.FamilyDescription}";
+    public bool HasSub => !string.IsNullOrWhiteSpace(Item.SubDescription);
+    // Dados técnicos que saíram das colunas e aparecem ao passar o mouse sobre a linha.
+    public string Details => string.Join("\n",
+        $"Arquivo: {Item.FileName}",
+        $"Aba: {Item.Sheet} • Linha: {Item.Row}",
+        $"Início: {Item.Start?.ToString("dd/MM/yyyy") ?? "—"}",
+        $"Término: {Item.End?.ToString("dd/MM/yyyy") ?? "—"}",
+        $"Grupo: {(string.IsNullOrWhiteSpace(Item.GroupCode) ? "—" : string.IsNullOrWhiteSpace(Item.GroupDescription) ? Item.GroupCode : $"{Item.GroupCode} - {Item.GroupDescription}")}");
     public event PropertyChangedEventHandler? PropertyChanged;
+}
+public sealed class ImportRow(ImportRecord record)
+{
+    public ImportRecord Record { get; } = record;
+    public string Name => Record.Name;
+    public DateTimeOffset? CreatedAt => DateTimeOffset.TryParse(Record.Created, CultureInfo.InvariantCulture,
+        DateTimeStyles.RoundtripKind, out var created) ? created.ToLocalTime() : null;
+    public int LinkedItems => Record.LinkedItems;
+    public string Status => Record.Managed ? "Pode ser excluída" : "Sem itens (remove só o registro)";
 }
 public sealed class BatchRow(PriceItem item, int copies)
 {
@@ -41,6 +90,8 @@ public partial class MainWindow : Window
     private readonly PlateRenderer renderer = new();
     private readonly ObservableCollection<BatchRow> basket = [];
     private List<ProductRow> products = [];
+    private List<ProductRow> allProducts = [];
+    private bool loadingFilters;
     private PlateTemplate? editing;
     private readonly DispatcherTimer previewTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
     private CancellationTokenSource? importCancellation;
@@ -107,12 +158,12 @@ public partial class MainWindow : Window
                 importReport = report.ToString();
                 var zero = batch.Items.Count(x => x.Price <= 0);
                 var pending = batch.Items.Count(x => x.Rule == QuantityRule.Pending);
-                var message = $"{batch.FileName}\n\n{batch.Items.Count:N0} condições válidas\n{zero:N0} preços zerados (bloqueados para impressão)\n{pending} condições pendentes\n{batch.Issues.Count} linhas rejeitadas\n\nImportar os itens válidos?";
+                var message = $"{batch.FileName}\n\n{batch.Items.Count:N0} condições válidas\n{zero:N0} preços zerados (bloqueados para impressão)\n{pending} condições pendentes\n{batch.Families?.Count ?? 0:N0} famílias com descrição\n{batch.Issues.Count} linhas rejeitadas\n\nImportar os itens válidos?";
                 if (batch.Items.Count == 0) { MessageBox.Show(this, "Nenhum item válido. Consulte o relatório."); continue; }
                 if (MessageBox.Show(this, message, "Conferir importação", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) continue;
                 cancellation.ThrowIfCancellationRequested();
                 var imported = await Task.Run(() => store.Import(batch));
-                report.AppendLine(imported ? "Importação concluída." : "Arquivo já importado; nenhuma duplicação.");
+                report.AppendLine(imported ? "Importação concluída." : "Arquivo já importado; nenhuma duplicação (descrições de família foram atualizadas).");
             }
             RefreshImports(); RefreshProducts(); Status.Text = "Importação finalizada. Consulte o relatório para os detalhes.";
         }
@@ -128,7 +179,7 @@ public partial class MainWindow : Window
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto, AcceptsReturn = true } }.ShowDialog();
     }
 
-    private void RefreshImports() => ImportsGrid.ItemsSource = store.ListImports();
+    private void RefreshImports() => ImportsGrid.ItemsSource = store.ListImports().Select(x => new ImportRow(x)).ToList();
     private void RefreshImportsClick(object sender, RoutedEventArgs e) => Run(RefreshImports);
     private string BackupBeforeMaintenance()
     {
@@ -140,21 +191,33 @@ public partial class MainWindow : Window
     }
     private void DeleteImportClick(object sender, RoutedEventArgs e) => Run(() =>
     {
-        if (ImportsGrid.SelectedItem is not ImportRecord entry)
+        if (ImportsGrid.SelectedItem is not ImportRow importRow)
             throw new InvalidOperationException("Selecione uma importação.");
-        if (!entry.Managed)
-            throw new InvalidOperationException("Importação antiga sem rastreamento de itens. Não é possível excluir individualmente com segurança.");
-        if (MessageBox.Show(this, $"Excluir a importação '{entry.Name}' e suas condições exclusivas?\n\nItens compartilhados com outras importações serão preservados.",
-            "Confirmar exclusão", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+        var entry = importRow.Record;
+        var question = entry.Managed
+            ? $"Excluir a importação '{entry.Name}' e suas condições exclusivas?\n\nItens compartilhados com outras importações serão preservados."
+            : $"A importação '{entry.Name}' não tem itens associados (eles já foram removidos ou ela é anterior ao rastreamento).\n\nRemover apenas o registro? Isso permite importar o arquivo novamente. Nenhum produto será excluído.";
+        if (MessageBox.Show(this, question, "Confirmar exclusão", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
         var backup = BackupBeforeMaintenance();
         var removed = store.DeleteImport(entry.Hash);
-        basket.Clear(); InvalidatePreview(); RefreshImports(); RefreshProducts();
-        Status.Text = $"Importação excluída: {removed} itens. Backup: {backup}";
+        if (removed > 0) { basket.Clear(); InvalidatePreview(); }
+        RefreshImports(); RefreshProducts();
+        Status.Text = entry.Managed
+            ? $"Importação excluída: {removed} itens. Backup: {backup}"
+            : $"Registro da importação removido. Backup: {backup}";
     });
     private void CleanExpiredClick(object sender, RoutedEventArgs e) => Run(() =>
     {
         var today = DateOnly.FromDateTime(DateTime.Today);
-        if (MessageBox.Show(this, $"Excluir ofertas e promoções vencidas antes de {today:dd/MM/yyyy}?\n\nO catálogo, os layouts e o histórico serão preservados.",
+        var expired = store.CountExpired(today);
+        if (expired == 0)
+        {
+            Status.Text = "Nenhuma oferta ou promoção vencida para limpar.";
+            MessageBox.Show(this, "Não há ofertas ou promoções vencidas. (As vencidas também são removidas automaticamente ao abrir o programa.)",
+                "Limpar condições vencidas", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        if (MessageBox.Show(this, $"Excluir {expired} ofertas e promoções vencidas antes de {today:dd/MM/yyyy}?\n\nO catálogo, os layouts e o histórico serão preservados.",
             "Limpar condições vencidas", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
         var backup = BackupBeforeMaintenance();
         var removed = store.DeleteExpired(today);
@@ -207,6 +270,7 @@ public partial class MainWindow : Window
         Field("Descrição", item.Description);
         Field("Subdescrição (opcional)", item.SubDescription ?? "");
         Field("Família", item.Family ?? "");
+        Field("Descrição da família (opcional)", item.FamilyDescription ?? "");
         Field("Preço", item.Price.ToString(CultureInfo.CurrentCulture));
         Field("Preço normal (opcional)", item.NormalPrice?.ToString(CultureInfo.CurrentCulture) ?? "");
         Field("Quantidade", item.Quantity.ToString(CultureInfo.CurrentCulture));
@@ -251,6 +315,10 @@ public partial class MainWindow : Window
                     Rule = (QuantityRule)rules.SelectedItem!
                 };
                 store.SaveItem(revised);
+                // A descrição vale para todos os produtos da mesma família.
+                var familyDescription = Value("Descrição da família (opcional)");
+                if (revised.Family is { Length: > 0 } familyCode && familyDescription.Length > 0)
+                    store.SaveFamily(new FamilyInfo(familyCode, familyDescription));
                 foreach (var row in basket.Where(x => x.Item.Id == item.Id)) row.Item = revised with { Code = ProductCode.Normalize(revised.DisplayCode) };
                 InvalidatePreview(); BatchGrid.Items.Refresh(); RefreshProducts();
                 window.DialogResult = true;
@@ -268,8 +336,41 @@ public partial class MainWindow : Window
     private void RefreshProducts()
     {
         SourceKind? source = SourceFilter.SelectedIndex == 0 ? null : (SourceKind)(SourceFilter.SelectedIndex - 1);
-        products = store.Search(SearchText.Text, source).Select(x => new ProductRow(x)).ToList();
-        ProductsGrid.ItemsSource = products; Status.Text = $"{products.Count} condições exibidas • {basket.Count} produtos no lote.";
+        allProducts = store.Search(SearchText.Text, source).Select(x => new ProductRow(x)).ToList();
+        var previous = FamilyFilter.SelectedItem as string;
+        var families = allProducts.Select(x => x.FamilyLabel).Where(f => !string.IsNullOrEmpty(f))
+            .Distinct(StringComparer.CurrentCultureIgnoreCase)
+            .Order(StringComparer.CurrentCultureIgnoreCase).ToList();
+        const string allFamilies = "Todas as famílias";
+        loadingFilters = true;
+        FamilyFilter.ItemsSource = new[] { allFamilies }.Concat(families).ToList();
+        FamilyFilter.SelectedItem = previous is not null && families.Contains(previous) ? previous : allFamilies;
+        loadingFilters = false;
+        ApplyProductFilters();
+    }
+    private void ProductFilterChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!loadingFilters) ApplyProductFilters();
+    }
+    private void ApplyProductFilters()
+    {
+        // Os ComboBox disparam SelectionChanged durante o InitializeComponent, antes de tudo existir.
+        if (ProductsGrid is null || StatusFilter is null || FamilyFilter is null) return;
+        var family = FamilyFilter.SelectedIndex > 0 ? FamilyFilter.SelectedItem as string : null;
+        IEnumerable<ProductRow> rows = allProducts;
+        rows = StatusFilter.SelectedIndex switch
+        {
+            1 => rows.Where(x => !x.IsExpired),
+            2 => rows.Where(x => x.IsExpired),
+            3 => rows.Where(x => x.Level is "attention" or "zero"),
+            _ => rows
+        };
+        if (family is not null)
+            rows = rows.Where(x => string.Equals(x.FamilyLabel, family, StringComparison.CurrentCultureIgnoreCase));
+        products = rows.ToList();
+        ProductsGrid.ItemsSource = products;
+        var hidden = allProducts.Count - products.Count;
+        Status.Text = $"{products.Count} condições exibidas{(hidden > 0 ? $" ({hidden} ocultas pelos filtros)" : "")} • {basket.Count} produtos no lote.";
     }
     private void SearchClick(object sender, RoutedEventArgs e) => Run(RefreshProducts);
     private void SearchKeyDown(object sender, KeyEventArgs e) { if (e.Key == Key.Enter) Run(RefreshProducts); }
@@ -292,6 +393,30 @@ public partial class MainWindow : Window
         }
         BatchGrid.Items.Refresh(); InvalidatePreview();
         Status.Text = $"{basket.Count} produtos no lote. Escolha o layout na aba Lote e impressão.";
+    });
+    private void AddFamiliesToBatchClick(object sender, RoutedEventArgs e) => Run(() =>
+    {
+        ProductsGrid.CommitEdit(DataGridEditingUnit.Cell, true);
+        if (!int.TryParse(CopiesText.Text, out var copies) || copies is < 1 or > 500) throw new InvalidOperationException("Informe 1 a 500 cópias.");
+        var chosen = products.Where(x => x.Selected).ToList();
+        if (chosen.Count == 0) throw new InvalidOperationException("Marque ao menos um produto de cada família na primeira coluna.");
+        var keyed = chosen.Select(x => (Row: x, Key: FamilyPlates.Key(x.Item))).ToList();
+        var without = keyed.Where(x => x.Key is null).ToList();
+        if (without.Count > 0)
+            throw new InvalidOperationException($"{without.Count} produto(s) marcado(s) não têm família nem grupo de promoção com descrição (ex.: {without[0].Row.Item.Description}).");
+        var plates = keyed.GroupBy(x => x.Key!)
+            .Select(g => FamilyPlates.Build(g.Select(x => x.Row.Item).ToList())).ToList();
+        if (plates.Any(p => basket.Any(b => b.Item.Code == p.Code && b.Item.Id != p.Id)))
+            throw new InvalidOperationException("Já há uma condição diferente dessa família no lote. Remova-a antes de adicionar.");
+        foreach (var plate in plates)
+        {
+            var existing = basket.FirstOrDefault(x => x.Item.Id == plate.Id);
+            if (existing is null) basket.Add(new(plate, copies));
+            else { existing.Item = plate; existing.Copies = copies; }
+        }
+        foreach (var row in chosen) row.Selected = false;
+        BatchGrid.Items.Refresh(); InvalidatePreview();
+        Status.Text = $"{plates.Count} placa(s) de família/grupo no lote ({basket.Count} itens no total). Escolha o layout na aba Lote e impressão.";
     });
     private void ConfirmRuleClick(object sender, RoutedEventArgs e) => Run(() =>
     {
@@ -345,7 +470,7 @@ public partial class MainWindow : Window
     }
     private static PriceItem Example() => new("sample", "21513", "021513", "PILHA PANASONIC SUPER HYPER AA C/4UN", 5.69m, 7.99m,
         DateOnly.FromDateTime(DateTime.Today), DateOnly.FromDateTime(DateTime.Today.AddDays(30)), SourceKind.Offer, null, 1,
-        QuantityRule.UnitPrice, "Exemplo", "", 0);
+        QuantityRule.UnitPrice, "Exemplo", "", 0, null, "Pilha alcalina • pacote com 4 unidades");
     private void QueueEditorPreview()
     {
         if (editing is null) return;

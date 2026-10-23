@@ -271,4 +271,168 @@ public class CoreTests
         }
         finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(dir, true); }
     }
+
+    [Fact] public void DefaultTemplateIncludesOptionalSubDescription()
+    {
+        var template = PlateTemplate.Default();
+        PlateRules.ValidateTemplate(template);
+        var element = Assert.Single(template.Elements, x => x.Text == "{subdescricao}");
+        Assert.Equal("Tipo 1", PlateRules.Resolve(element.Text, Item() with { SubDescription = "Tipo 1" }));
+        Assert.Equal("", PlateRules.Resolve(element.Text, Item()));
+        Assert.NotNull(new BatchService().Create([new(Item(), 1)], template, Date));
+    }
+
+    [Fact] public void ExpiredCleanupRemovesEmptiedImportsAndAllowsReimport()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var store = new SqliteStore(Path.Combine(dir, "test.db"));
+            var batch = new ImportBatch("offer-hash", "oferta.xlsx", [Item() with { Id = "exp", End = new DateOnly(2026, 3, 1) }], []);
+            Assert.True(store.Import(batch));
+            Assert.Equal(1, store.DeleteExpired(new DateOnly(2026, 10, 20)));
+            Assert.Empty(store.ListImports());
+            Assert.True(store.Import(batch));
+        }
+        finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(dir, true); }
+    }
+
+    [Fact] public void DeletingLastItemRemovesImportRecord()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var store = new SqliteStore(Path.Combine(dir, "test.db"));
+            store.Import(new ImportBatch("two-items", "duas.xlsx", [Item() with { Id = "a" }, Item() with { Id = "b" }], []));
+            store.DeleteItem("a");
+            Assert.Equal(1, Assert.Single(store.ListImports()).LinkedItems);
+            store.DeleteItem("b");
+            Assert.Empty(store.ListImports());
+        }
+        finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(dir, true); }
+    }
+
+    [Fact] public void ImportWithoutLinksCanBeRemovedWithoutTouchingProducts()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var path = Path.Combine(dir, "test.db");
+            var store = new SqliteStore(path);
+            store.SaveItem(Item() with { Id = "manual:x" });
+            using (var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={path}"))
+            {
+                connection.Open();
+                using var command = connection.CreateCommand();
+                command.CommandText = "INSERT INTO imports VALUES('legacy','antigo.xls','2026-01-01T00:00:00+00:00')";
+                command.ExecuteNonQuery();
+            }
+            Assert.False(Assert.Single(store.ListImports()).Managed);
+            Assert.Equal(0, store.DeleteImport("legacy"));
+            Assert.Empty(store.ListImports());
+            Assert.Single(store.Search("", null));
+        }
+        finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(dir, true); }
+    }
+
+    [Fact] public void ImporterReadsFamilyCodeAndDescriptionFromSeparateColumn()
+    {
+        object?[][] rows = [
+            ["Produto", "Descrição", "Preço Venda", "Família", "Descrição Família"],
+            ["1", "Iogurte morango", 3.5, "012", "LATICÍNIOS"],
+            ["2", "Iogurte uva", 3.5, "012", "LATICÍNIOS"]
+        ];
+        var batch = VrImporter.ParseRows(rows, "test.xlsx", "Sheet0", "a")!;
+        Assert.Empty(batch.Issues);
+        Assert.All(batch.Items, x => Assert.Equal("012", x.Family));
+        var family = Assert.Single(batch.Families!);
+        Assert.Equal("LATICÍNIOS", family.Description);
+    }
+
+    [Fact] public void ImporterSplitsFamilyCodeAndDescriptionFromSingleCell()
+    {
+        object?[][] rows = [
+            ["Produto", "Descrição", "Preço Venda", "Família"],
+            ["1", "Suco", 4, "12 - BEBIDAS"]
+        ];
+        var batch = VrImporter.ParseRows(rows, "test.xlsx", "Sheet0", "a")!;
+        Assert.Equal("12", Assert.Single(batch.Items).Family);
+        Assert.Equal("BEBIDAS", Assert.Single(batch.Families!).Description);
+    }
+
+    [Fact] public void FamilyDescriptionIsStoredOnceAndResolvedOnSearch()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var store = new SqliteStore(Path.Combine(dir, "test.db"));
+            store.Import(new ImportBatch("h", "a.xlsx",
+                [Item() with { Id = "c", Source = SourceKind.Catalog, End = null, Family = "012" }], [],
+                [new FamilyInfo("012", "LATICÍNIOS")]));
+            Assert.Equal("LATICÍNIOS", Assert.Single(store.Search("", null)).FamilyDescription);
+            store.SaveFamily(new FamilyInfo("12", "LATICÍNIOS PREMIUM"));
+            Assert.Equal("LATICÍNIOS PREMIUM", Assert.Single(store.Search("", null)).FamilyDescription);
+        }
+        finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(dir, true); }
+    }
+
+    [Fact] public void FamilyPlateUsesFamilyDescriptionAndRequiresSameCondition()
+    {
+        var a = Item() with { Id = "a", Code = "1", Family = "012", FamilyDescription = "LATICÍNIOS" };
+        var b = a with { Id = "b", Code = "2", Description = "Outro produto" };
+        var plate = FamilyPlates.Build([a, b]);
+        Assert.Equal("LATICÍNIOS", plate.Description);
+        Assert.Equal("familia:12", plate.Code);
+        Assert.NotNull(new BatchService().Create([new(plate, 1)], PlateTemplate.Default(), Date));
+        Assert.Equal("LATICÍNIOS", PlateRules.Resolve("{descricao_familia}", a));
+
+        Assert.Throws<InvalidOperationException>(() => FamilyPlates.Build([a, b with { Price = 9.99m }]));
+        Assert.Throws<InvalidOperationException>(() => FamilyPlates.Build([a with { FamilyDescription = null }]));
+        Assert.Throws<InvalidOperationException>(() => FamilyPlates.Build([a, b with { Family = "99" }]));
+    }
+
+    [Fact] public void ParserKeepsPromotionGroupDescription()
+    {
+        object?[][] rows = [
+            ["Código", "Descrição", "Data Início", "Data Término", "Valor Final", "Quantidade"],
+            ["024803", "SORVETE KIBON MINI 92G", "30/09/2026 - QUA", "31/12/2026 - QUI", "", 2],
+            ["", "051210 - SORV KIBON MINI CHICABON CHOC 92G", "", "", 10d, ""]
+        ];
+        var batch = VrImporter.ParseRows(rows, "test.xlsx", "Sheet0", "a")!;
+        Assert.Equal("SORVETE KIBON MINI 92G", Assert.Single(batch.Items).GroupDescription);
+    }
+
+    [Fact] public void PromotionGroupDescriptionIsUsedWhenProductHasNoFamily()
+    {
+        var a = Item() with { Id = "a", Code = "1", Source = SourceKind.Promotion, GroupCode = "24803",
+            GroupDescription = "SORVETE KIBON MINI 92G", Quantity = 2, Rule = QuantityRule.UnitPrice };
+        var b = a with { Id = "b", Code = "2" };
+        var plate = FamilyPlates.Build([a, b]);
+        Assert.Equal("SORVETE KIBON MINI 92G", plate.Description);
+        Assert.Equal("grupo:24803", plate.Code);
+        // Com família descrita, a família tem prioridade sobre o grupo.
+        var withFamily = a with { Family = "012", FamilyDescription = "SORVETES" };
+        Assert.Equal("SORVETES", FamilyPlates.Build([withFamily]).Description);
+        // Sem família e fora de grupo de promoção, não há como montar a placa coletiva.
+        Assert.Null(FamilyPlates.Key(Item()));
+    }
+
+    [Fact] public void ReimportingSameFileFillsMissingGroupDescription()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var store = new SqliteStore(Path.Combine(dir, "test.db"));
+            var promotion = Item() with { Id = "p1", Source = SourceKind.Promotion, GroupCode = "1", Quantity = 2, Rule = QuantityRule.UnitPrice };
+            Assert.True(store.Import(new ImportBatch("hp", "promo.xlsx", [promotion], [])));
+            Assert.False(store.Import(new ImportBatch("hp", "promo.xlsx", [promotion with { GroupDescription = "BEBIDA MISTA" }], [])));
+            Assert.Equal("BEBIDA MISTA", Assert.Single(store.Search("", null)).GroupDescription);
+        }
+        finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(dir, true); }
+    }
 }

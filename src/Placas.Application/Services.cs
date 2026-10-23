@@ -1,4 +1,3 @@
-
 using System.Text.Json;
 using Placas.Domain;
 
@@ -24,6 +23,7 @@ public interface IStore
 {
     bool Import(ImportBatch batch);
     void SaveItem(PriceItem item);
+    void SaveFamily(FamilyInfo family);
     void DeleteItem(string id);
 
     List<ImportRecord> ListImports();
@@ -57,6 +57,53 @@ public interface IStore
     List<HistoryEntry> History();
 
     void Backup(string path);
+}
+
+public static class FamilyPlates
+{
+
+    public static string? Key(PriceItem item)
+    {
+        var hasFamily = !string.IsNullOrWhiteSpace(item.Family);
+        if (hasFamily && !string.IsNullOrWhiteSpace(item.FamilyDescription)) return "F:" + FamilyCode.Key(item.Family!);
+        if (item.Source == SourceKind.Promotion && !string.IsNullOrWhiteSpace(item.GroupCode)
+            && !string.IsNullOrWhiteSpace(item.GroupDescription)) return "G:" + FamilyCode.Key(item.GroupCode!);
+        return hasFamily ? "F:" + FamilyCode.Key(item.Family!) : null;
+    }
+
+    public static PriceItem Build(IReadOnlyList<PriceItem> items)
+    {
+        if (items.Count == 0) throw new InvalidOperationException("Nenhum produto informado.");
+        var first = items[0];
+        var key = Key(first) ?? throw new InvalidOperationException(
+            $"O produto '{first.Description}' não tem família nem grupo de promoção com descrição.");
+        if (items.Any(x => Key(x) != key))
+            throw new InvalidOperationException("Os produtos informados pertencem a famílias ou grupos diferentes.");
+        var isGroup = key.StartsWith("G:", StringComparison.Ordinal);
+        var code = key[2..];
+        var description = isGroup
+            ? items.Select(x => x.GroupDescription).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))
+            : items.Select(x => x.FamilyDescription).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
+        if (description is null)
+            throw new InvalidOperationException(
+                $"A família {first.Family} não tem descrição. Edite um produto dela e preencha 'Descrição da família'.");
+        var conditions = items.Select(x => (x.Source, x.Price, x.NormalPrice, x.Start, x.End, x.Quantity, x.Rule)).Distinct().Count();
+        if (conditions > 1)
+            throw new InvalidOperationException(
+                $"Os produtos marcados de '{description}' têm preço, validade ou quantidade diferentes. " +
+                "Marque apenas os que compartilham a mesma condição.");
+        description = description.Trim();
+        return first with
+        {
+            Id = $"{(isGroup ? "group" : "family")}:{code}:{first.Source}:{first.Start:yyyyMMdd}:{first.End:yyyyMMdd}",
+            Code = (isGroup ? "grupo:" : "familia:") + code,
+            DisplayCode = (isGroup ? "Grupo " : "Fam. ") + code,
+            Description = description,
+            SubDescription = null,
+            FamilyDescription = isGroup ? first.FamilyDescription : description,
+            GroupDescription = isGroup ? description : first.GroupDescription
+        };
+    }
 }
 
 public sealed class BatchService

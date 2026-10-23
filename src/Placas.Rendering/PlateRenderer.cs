@@ -18,9 +18,12 @@ public sealed class PlateRenderer
         var canvas = new Canvas { Width = Dip(template.WidthMm), Height = Dip(template.HeightMm), Background = Brush(template.Background), ClipToBounds = true };
         foreach (var element in template.Elements)
         {
+            var resolved = PlateRules.Resolve(element.Text, item);
+            // Campo opcional sem valor (ex.: {subdescricao} vazia): não desenha o elemento, nem o fundo dele.
+            if (string.IsNullOrWhiteSpace(resolved) && element.Text.Contains('{')) continue;
             var text = new TextBlock
             {
-                Text = PlateRules.Resolve(element.Text, item), FontFamily = new FontFamily("Segoe UI"),
+                Text = resolved, FontFamily = new FontFamily("Segoe UI"),
                 FontWeight = element.Bold ? FontWeights.Bold : FontWeights.Normal,
                 FontStyle = element.Italic ? FontStyles.Italic : FontStyles.Normal,
                 Foreground = Brush(element.Foreground), TextAlignment = TextAlignment.Center,

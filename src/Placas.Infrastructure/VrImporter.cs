@@ -20,6 +20,7 @@ public sealed class VrImporter : ISpreadsheetImporter
         using var reader = ExcelReaderFactory.CreateReader(stream);
         var items = new List<PriceItem>();
         var issues = new List<ImportIssue>();
+        var families = new List<FamilyInfo>();
         var recognized = false;
         do
         {
@@ -35,10 +36,11 @@ public sealed class VrImporter : ISpreadsheetImporter
             if (parsed is not null)
             {
                 recognized = true; items.AddRange(parsed.Items); issues.AddRange(parsed.Issues);
+                families.AddRange(parsed.Families ?? []);
             }
         } while (reader.NextResult());
         if (!recognized) throw new InvalidDataException("Nenhuma aba possui cabeçalhos reconhecidos do VR Master.");
-        return new(hash, Path.GetFileName(path), items, issues);
+        return new(hash, Path.GetFileName(path), items, issues, families);
     }
 
     public static ImportBatch? ParseRows(IReadOnlyList<object?[]> rows, string file, string sheet,
@@ -61,8 +63,14 @@ public sealed class VrImporter : ISpreadsheetImporter
         if (headers is null) return null;
         var items = new List<PriceItem>();
         var issues = new List<ImportIssue>();
+        var familyMap = new Dictionary<string, FamilyInfo>();
+        // Coluna do código da família e, quando existir, a da descrição (ex.: "Descrição Família", "Nome da Família").
+        var familyCodeKey = new[] { "codigofamilia", "codfamilia", "idfamilia", "familia" }.FirstOrDefault(headers.ContainsKey);
+        var familyDescriptionKey = headers.Keys.FirstOrDefault(k => k != familyCodeKey && k.Contains("familia")
+            && (k.Contains("desc") || k.Contains("nome")));
         string? group = null;
         DateOnly? groupStart = null, groupEnd = null;
+        string? groupDescription = null;
         decimal quantity = 1;
         for (var i = headerIndex + 1; i < rows.Count; i++)
         {
@@ -81,7 +89,7 @@ public sealed class VrImporter : ISpreadsheetImporter
                 {
                     if (!string.IsNullOrWhiteSpace(code))
                     {
-                        group = null; // Never inherit a previous group after an invalid header.
+                        group = null; groupDescription = null; // Never inherit a previous group after an invalid header.
                         var newGroup = ProductCode.Normalize(code);
                         var newStart = Date(Cell("datainicio"));
                         var newEnd = Date(Cell("datatermino"));
@@ -89,6 +97,7 @@ public sealed class VrImporter : ISpreadsheetImporter
                         if (newQuantity < 1 || newQuantity != decimal.Truncate(newQuantity) || newStart > newEnd)
                             throw new FormatException("Quantidade ou período do grupo inválido.");
                         group = newGroup; groupStart = newStart; groupEnd = newEnd; quantity = newQuantity;
+                        groupDescription = description.Length > 0 ? description : null;
                         continue;
                     }
                     if (group is null) throw new FormatException("Produto sem grupo promocional válido.");
@@ -107,10 +116,23 @@ public sealed class VrImporter : ISpreadsheetImporter
                 if (price < 0 || normal < 0 || start > end) throw new FormatException("Preço ou validade inválidos.");
                 var key = ProductCode.Normalize(code);
                 var id = $"{kind}:{key}:{group ?? ""}:{start:yyyyMMdd}:{end:yyyyMMdd}";
+                string? family = null, familyDescription = null;
+                var familyCell = familyCodeKey is null ? "" : Text(Cell(familyCodeKey));
+                if (familyCell.Length > 0)
+                {
+                    // Aceita também "12 - LATICÍNIOS" na mesma célula.
+                    var combined = Regex.Match(familyCell, @"^(\d+)\s*[-–]\s*(.+)$");
+                    if (combined.Success) { family = combined.Groups[1].Value; familyDescription = combined.Groups[2].Value.Trim(); }
+                    else family = familyCell;
+                }
+                if (familyDescriptionKey is not null && Text(Cell(familyDescriptionKey)) is { Length: > 0 } separate) familyDescription = separate;
+                if (family is not null && !string.IsNullOrWhiteSpace(familyDescription))
+                    familyMap[FamilyCode.Key(family)] = new FamilyInfo(family, familyDescription);
                 items.Add(new(id, key, code, description, price, normal, start, end, kind, group,
                     kind == SourceKind.Promotion ? quantity : 1,
                     kind == SourceKind.Promotion && quantity > 1 ? QuantityRule.Pending : QuantityRule.UnitPrice,
-                    file, sheet, i + 1, Text(Cell("familia")) is { Length: > 0 } family ? family : null));
+                    file, sheet, i + 1, family,
+                    GroupDescription: kind == SourceKind.Promotion ? groupDescription : null));
             }
             catch (Exception ex) when (ex is FormatException or OverflowException or ArgumentException)
             {
@@ -124,7 +146,7 @@ public sealed class VrImporter : ISpreadsheetImporter
                 foreach (var item in duplicateGroup) issues.Add(new(sheet, item.Row, $"Condição duplicada para {item.DisplayCode}; revise a origem."));
             else unique.Add(duplicateGroup.Single());
         }
-        return new(hash, file, unique, issues);
+        return new(hash, file, unique, issues, familyMap.Values.ToList());
     }
 
     private static string Text(object? value) => Convert.ToString(value, CultureInfo.InvariantCulture)?.Trim() ?? "";

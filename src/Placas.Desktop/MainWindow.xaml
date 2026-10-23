@@ -18,6 +18,8 @@
             <WrapPanel Margin="0,10,0,10">
               <TextBox x:Name="SearchText" Width="320" ToolTip="Código ou descrição" KeyDown="SearchKeyDown"/>
               <ComboBox x:Name="SourceFilter" Width="160" SelectedIndex="0"><ComboBoxItem Content="Todas as origens"/><ComboBoxItem Content="Catálogo"/><ComboBoxItem Content="Ofertas"/><ComboBoxItem Content="Promoções"/></ComboBox>
+              <ComboBox x:Name="StatusFilter" Width="170" SelectedIndex="0" SelectionChanged="ProductFilterChanged" ToolTip="Filtrar por situação"><ComboBoxItem Content="Todas as situações"/><ComboBoxItem Content="Não vencidas"/><ComboBoxItem Content="Vencidas"/><ComboBoxItem Content="Requerem atenção"/></ComboBox>
+              <ComboBox x:Name="FamilyFilter" Width="170" SelectionChanged="ProductFilterChanged" ToolTip="Filtrar por família"/>
               <Button Content="Pesquisar" Click="SearchClick"/>
               <Button Content="Novo registro" Click="NewProductClick"/>
               <Button Content="Editar selecionado" Click="EditProductClick"/>
@@ -25,33 +27,70 @@
               <Button Content="Marcar exibidos" Click="SelectAllClick"/>
               <Button Content="Desmarcar" Click="ClearSelectionClick"/>
             </WrapPanel>
-            <TextBlock Text="Busca limitada a 500 condições. Refine a pesquisa. Itens marcados são adicionados ao lote abaixo." Foreground="#526172" Margin="4,0,0,10"/>
+            <TextBlock Text="Busca limitada a 500 condições; os filtros de situação e família atuam sobre esse resultado. Vermelho: vencida • Amarelo: regra a confirmar • Azul: futura. Passe o mouse sobre a linha para ver arquivo, aba e linha. Clique no cabeçalho para ordenar." TextWrapping="Wrap" Foreground="#526172" Margin="4,0,0,10"/>
           </StackPanel>
           <WrapPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
             <TextBlock Text="Cópias por item:" VerticalAlignment="Center"/>
             <TextBox x:Name="CopiesText" Text="1" Width="55"/>
             <Button Content="Adicionar marcados ao lote" Click="AddToBatchClick"/>
+            <Button Content="Adicionar famílias dos marcados" Click="AddFamiliesToBatchClick" ToolTip="Gera uma placa por família, com a descrição da família. Produtos de promoção sem família usam a descrição do grupo da promoção. Os produtos marcados do mesmo conjunto precisam ter a mesma condição."/>
             <Button Content="Confirmar regra da promoção destacada" Click="ConfirmRuleClick"/>
           </WrapPanel>
-          <DataGrid x:Name="ProductsGrid" SelectionMode="Single">
+          <DataGrid x:Name="ProductsGrid" SelectionMode="Single" RowHeight="42">
+            <DataGrid.Resources>
+              <Style x:Key="CellText" TargetType="TextBlock"><Setter Property="VerticalAlignment" Value="Center"/><Setter Property="Margin" Value="6,0"/></Style>
+              <Style x:Key="RightText" TargetType="TextBlock" BasedOn="{StaticResource CellText}"><Setter Property="TextAlignment" Value="Right"/></Style>
+              <Style x:Key="OriginText" TargetType="TextBlock" BasedOn="{StaticResource CellText}">
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding Origin}" Value="Oferta"><Setter Property="Foreground" Value="#0B5CAD"/><Setter Property="FontWeight" Value="SemiBold"/></DataTrigger>
+                  <DataTrigger Binding="{Binding Origin}" Value="Promoção"><Setter Property="Foreground" Value="#7A3FB0"/><Setter Property="FontWeight" Value="SemiBold"/></DataTrigger>
+                  <DataTrigger Binding="{Binding Origin}" Value="Catálogo"><Setter Property="Foreground" Value="#526172"/></DataTrigger>
+                </Style.Triggers>
+              </Style>
+              <Style x:Key="SituationText" TargetType="TextBlock" BasedOn="{StaticResource CellText}">
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding Level}" Value="expired"><Setter Property="Foreground" Value="#B42318"/><Setter Property="FontWeight" Value="SemiBold"/></DataTrigger>
+                  <DataTrigger Binding="{Binding Level}" Value="attention"><Setter Property="Foreground" Value="#B54708"/><Setter Property="FontWeight" Value="SemiBold"/></DataTrigger>
+                  <DataTrigger Binding="{Binding Level}" Value="zero"><Setter Property="Foreground" Value="#B54708"/></DataTrigger>
+                  <DataTrigger Binding="{Binding Level}" Value="future"><Setter Property="Foreground" Value="#175CD3"/></DataTrigger>
+                  <DataTrigger Binding="{Binding Level}" Value="ok"><Setter Property="Foreground" Value="#067647"/></DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </DataGrid.Resources>
+            <DataGrid.RowStyle>
+              <Style TargetType="DataGridRow">
+                <Setter Property="ToolTip" Value="{Binding Details}"/>
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding Level}" Value="expired"><Setter Property="Background" Value="#FBE9E9"/></DataTrigger>
+                  <DataTrigger Binding="{Binding Level}" Value="attention"><Setter Property="Background" Value="#FFF4D6"/></DataTrigger>
+                  <DataTrigger Binding="{Binding Level}" Value="future"><Setter Property="Background" Value="#EAF3FF"/></DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </DataGrid.RowStyle>
             <DataGrid.Columns>
               <DataGridCheckBoxColumn Header="✓" Binding="{Binding Selected, UpdateSourceTrigger=PropertyChanged}" Width="45"/>
-              <DataGridTextColumn Header="Código" Binding="{Binding Item.DisplayCode}" Width="85" IsReadOnly="True"/>
-              <DataGridTextColumn Header="Descrição" Binding="{Binding Item.Description}" Width="*" IsReadOnly="True"/>
-              <DataGridTextColumn Header="Preço" Binding="{Binding Item.Price, StringFormat=C2}" Width="90" IsReadOnly="True"/>
-              <DataGridTextColumn Header="Normal" Binding="{Binding Item.NormalPrice, StringFormat=C2}" Width="90" IsReadOnly="True"/>
-              <DataGridTextColumn Header="Origem" Binding="{Binding Origin}" Width="90" IsReadOnly="True"/>
-              <DataGridTextColumn Header="Subdescrição" Binding="{Binding Item.SubDescription}" Width="200" IsReadOnly="True"/>
-              <DataGridTextColumn Header="Família" Binding="{Binding Item.Family}" Width="130" IsReadOnly="True"/>
-              <DataGridTextColumn Header="Quantidade" Binding="{Binding Item.Quantity}" Width="100" IsReadOnly="True"/>
-              <DataGridTextColumn Header="Regra" Binding="{Binding Item.Rule}" Width="120" IsReadOnly="True"/>
-              <DataGridTextColumn Header="Início" Binding="{Binding Item.Start}" Width="105" IsReadOnly="True"/>
-              <DataGridTextColumn Header="Grupo" Binding="{Binding Item.GroupCode}" Width="100" IsReadOnly="True"/>
-              <DataGridTextColumn Header="Arquivo" Binding="{Binding Item.FileName}" Width="160" IsReadOnly="True"/>
-              <DataGridTextColumn Header="Aba" Binding="{Binding Item.Sheet}" Width="100" IsReadOnly="True"/>
-              <DataGridTextColumn Header="Linha" Binding="{Binding Item.Row}" Width="65" IsReadOnly="True"/>
-              <DataGridTextColumn Header="Validade" Binding="{Binding Item.End}" Width="100" IsReadOnly="True"/>
-              <DataGridTextColumn Header="Revisão" Binding="{Binding Review}" Width="130" IsReadOnly="True"/>
+              <DataGridTextColumn Header="Código" Binding="{Binding Item.DisplayCode}" Width="80" IsReadOnly="True" ElementStyle="{StaticResource CellText}"/>
+              <DataGridTemplateColumn Header="Descrição" Width="*" MinWidth="200" SortMemberPath="Item.Description" IsReadOnly="True">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate>
+                    <StackPanel VerticalAlignment="Center" Margin="6,0">
+                      <TextBlock Text="{Binding Item.Description}" TextTrimming="CharacterEllipsis"/>
+                      <TextBlock Text="{Binding Item.SubDescription}" FontSize="11" Foreground="#6B7785" TextTrimming="CharacterEllipsis">
+                        <TextBlock.Style>
+                          <Style TargetType="TextBlock"><Style.Triggers><DataTrigger Binding="{Binding HasSub}" Value="False"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers></Style>
+                        </TextBlock.Style>
+                      </TextBlock>
+                    </StackPanel>
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+              <DataGridTextColumn Header="Preço (R$)" Binding="{Binding Item.Price, StringFormat=N2}" Width="90" IsReadOnly="True" ElementStyle="{StaticResource RightText}"/>
+              <DataGridTextColumn Header="Normal (R$)" Binding="{Binding Item.NormalPrice, StringFormat=N2}" Width="90" IsReadOnly="True" ElementStyle="{StaticResource RightText}"/>
+              <DataGridTextColumn Header="Origem" Binding="{Binding Origin}" Width="85" IsReadOnly="True" ElementStyle="{StaticResource OriginText}"/>
+              <DataGridTextColumn Header="Condição" Binding="{Binding Condition}" SortMemberPath="Item.Quantity" Width="160" IsReadOnly="True" ElementStyle="{StaticResource CellText}"/>
+              <DataGridTextColumn Header="Validade" Binding="{Binding Item.End, StringFormat=dd/MM/yyyy, TargetNullValue='—'}" Width="95" IsReadOnly="True" ElementStyle="{StaticResource CellText}"/>
+              <DataGridTextColumn Header="Situação" Binding="{Binding Situation}" SortMemberPath="Level" Width="125" IsReadOnly="True" ElementStyle="{StaticResource SituationText}"/>
+              <DataGridTextColumn Header="Família" Binding="{Binding FamilyLabel}" SortMemberPath="Item.Family" Width="160" IsReadOnly="True" ElementStyle="{StaticResource CellText}"/>
             </DataGrid.Columns>
           </DataGrid>
         </DockPanel>
@@ -71,7 +110,7 @@
               <TextBlock Text="Altura mm" VerticalAlignment="Center"/><TextBox Text="{Binding HeightMm}" Width="65"/>
               <TextBlock Text="Fundo" VerticalAlignment="Center"/><TextBox Text="{Binding Background}" Width="110"/>
             </WrapPanel>
-            <TextBlock Text="Campos: {descricao}  {codigo}  {preco}  {preco_normal}  {validade}  {condicao}  {quantidade}  {familia}  {subdescricao}" Margin="4,4,0,8"/>
+            <TextBlock Text="Campos: {descricao}  {codigo}  {preco}  {preco_normal}  {validade}  {condicao}  {quantidade}  {familia}  {subdescricao}  {descricao_familia}" Margin="4,4,0,8"/>
             <TextBlock x:Name="PreviewStatus" Text="Prévia automática ativada. Alterações são mostradas conforme você edita." Foreground="#526172" Margin="4,0,0,8"/>
           </StackPanel>
           <Grid>
@@ -141,11 +180,19 @@
             <TextBlock Text="Um backup é criado antes de qualquer exclusão. Layouts e histórico são preservados. Importações antigas sem vínculos não podem ser excluídas individualmente." TextWrapping="Wrap" Margin="4,10" Foreground="#526172"/>
           </StackPanel>
           <DataGrid x:Name="ImportsGrid" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single">
+            <DataGrid.Resources>
+              <Style x:Key="CellText" TargetType="TextBlock"><Setter Property="VerticalAlignment" Value="Center"/><Setter Property="Margin" Value="6,0"/></Style>
+              <Style x:Key="RightText" TargetType="TextBlock" BasedOn="{StaticResource CellText}"><Setter Property="TextAlignment" Value="Right"/></Style>
+              <Style x:Key="ImportStatusText" TargetType="TextBlock" BasedOn="{StaticResource CellText}">
+                <Setter Property="Foreground" Value="#067647"/>
+                <Style.Triggers><DataTrigger Binding="{Binding Record.Managed}" Value="False"><Setter Property="Foreground" Value="#8A94A3"/></DataTrigger></Style.Triggers>
+              </Style>
+            </DataGrid.Resources>
             <DataGrid.Columns>
-              <DataGridTextColumn Header="Arquivo" Binding="{Binding Name, UpdateSourceTrigger=PropertyChanged}" Width="*"/>
-              <DataGridTextColumn Header="Importado em" Binding="{Binding Created}" Width="230"/>
-              <DataGridTextColumn Header="Itens associados" Binding="{Binding LinkedItems}" Width="150"/>
-              <DataGridCheckBoxColumn Header="Exclusão disponível" Binding="{Binding Managed}" Width="150"/>
+              <DataGridTextColumn Header="Arquivo" Binding="{Binding Name}" Width="*" ElementStyle="{StaticResource CellText}"/>
+              <DataGridTextColumn Header="Importado em" Binding="{Binding CreatedAt, StringFormat='dd/MM/yyyy HH:mm'}" Width="150" ElementStyle="{StaticResource CellText}"/>
+              <DataGridTextColumn Header="Itens" Binding="{Binding LinkedItems, StringFormat=N0}" Width="90" ElementStyle="{StaticResource RightText}"/>
+              <DataGridTextColumn Header="Situação" Binding="{Binding Status}" SortMemberPath="Record.Managed" Width="190" ElementStyle="{StaticResource ImportStatusText}"/>
             </DataGrid.Columns>
           </DataGrid>
         </DockPanel>

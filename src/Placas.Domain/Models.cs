@@ -14,6 +14,20 @@ public static class ProductCode
     }
 }
 
+public static class FamilyCode
+{
+    // Chave de comparação: "012" e "12" são a mesma família; códigos com letras ignoram caixa.
+    public static string Key(string raw)
+    {
+        var value = raw.Trim();
+        if (value.Length > 0 && value.All(char.IsDigit))
+            return value.TrimStart('0') is { Length: > 0 } key ? key : "0";
+        return value.ToUpperInvariant();
+    }
+}
+
+public sealed record FamilyInfo(string Code, string Description);
+
 public enum SourceKind { Catalog, Offer, Promotion }
 public enum QuantityRule { Pending, UnitPrice, BundleTotal }
 public sealed record PriceItem(
@@ -21,10 +35,11 @@ public sealed record PriceItem(
     decimal Price, decimal? NormalPrice, DateOnly? Start, DateOnly? End,
     SourceKind Source, string? GroupCode, decimal Quantity,
     QuantityRule Rule, string FileName, string Sheet, int Row, string? Family = null,
-    string? SubDescription = null);
+    string? SubDescription = null, string? FamilyDescription = null, string? GroupDescription = null);
 
 public sealed record ImportIssue(string Sheet, int Row, string Message);
-public sealed record ImportBatch(string Hash, string FileName, List<PriceItem> Items, List<ImportIssue> Issues);
+public sealed record ImportBatch(string Hash, string FileName, List<PriceItem> Items, List<ImportIssue> Issues,
+    List<FamilyInfo>? Families = null);
 public sealed record PrintItem(PriceItem Product, int Copies);
 public sealed record PrintBatch(string Id, DateTimeOffset CreatedAt, DateOnly SaleDate,
     PlateTemplate Template, List<PrintItem> Items);
@@ -60,11 +75,12 @@ public sealed class PlateTemplate
         Elements = [
             new() { Text = "OFERTA", X = 0, Y = 0, Width = 95, Height = 24,
                 FontSize = 38, Foreground = "#FFFFFF", Background = "#D71920" },
-            new() { Text = "{descricao}", X = 5, Y = 29, Width = 85, Height = 35, FontSize = 24 },
+            new() { Text = "{descricao}", X = 5, Y = 29, Width = 85, Height = 27, FontSize = 24 },
             new() { Text = "{preco}", X = 4, Y = 68, Width = 87, Height = 33, FontSize = 62 },
             new() { Text = "{condicao}", X = 4, Y = 103, Width = 87, Height = 13, FontSize = 13 },
             new() { Text = "{validade}", X = 4, Y = 119, Width = 87, Height = 8, FontSize = 10 },
-            new() { Text = "Cód. {codigo}", X = 4, Y = 128, Width = 87, Height = 5, FontSize = 9 }
+            new() { Text = "Cód. {codigo}", X = 4, Y = 128, Width = 87, Height = 5, FontSize = 9 },
+            new() { Text = "{subdescricao}", X = 5, Y = 57, Width = 85, Height = 9, FontSize = 12, MinFontSize = 7, Foreground = "#374151", Bold = false }
         ]
     };
 }
@@ -72,7 +88,7 @@ public sealed class PlateTemplate
 public static class PlateRules
 {
     private static readonly CultureInfo Pt = CultureInfo.GetCultureInfo("pt-BR");
-    public static readonly string[] Tokens = ["descricao", "codigo", "preco", "preco_normal","inicio", "validade", "condicao","quantidade","familia","subdescricao"];
+    public static readonly string[] Tokens = ["descricao", "codigo", "preco", "preco_normal","inicio", "validade", "condicao","quantidade","familia","subdescricao","descricao_familia"];
     public static void ValidateTemplate(PlateTemplate template)
     {
         if (template.SchemaVersion != 1 || string.IsNullOrWhiteSpace(template.Name))
@@ -128,6 +144,7 @@ public static class PlateRules
             .Replace("{descricao}", item.Description)
             .Replace("{familia}", item.Family ?? "")
             .Replace("{subdescricao}", item.SubDescription ?? "")
+            .Replace("{descricao_familia}", item.FamilyDescription ?? "")
             .Replace("{codigo}", item.DisplayCode)
             .Replace("{preco}", item.Price.ToString("N2", Pt))
             .Replace("{preco_normal}", item.NormalPrice?.ToString("N2", Pt) ?? "")
