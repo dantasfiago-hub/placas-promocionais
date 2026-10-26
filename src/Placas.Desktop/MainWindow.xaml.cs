@@ -546,13 +546,17 @@ public partial class MainWindow : Window
     }
     private void TemplatePreviewClick(object sender, RoutedEventArgs e) => Run(UpdateTemplatePreview);
 
-    private (double Width, double Height, double Margin, double Gap) Paper()
+    private static double ParseMm(TextBox box, string name)
+        => double.TryParse(box.Text, out var value) && double.IsFinite(value)
+            ? value : throw new InvalidOperationException($"{name} inválido(a).");
+    private (double Width, double Height, PageMargins Margins, double Gap) Paper()
     {
         var (w, h) = PaperBox.SelectedIndex switch { 1 => (297d, 420d), 2 => (148d, 210d), _ => (210d, 297d) };
         if (Landscape.IsChecked == true) (w, h) = (h, w);
-        if (!double.TryParse(MarginText.Text, out var margin) || !double.TryParse(GapText.Text, out var gap))
-            throw new InvalidOperationException("Margem ou espaçamento inválido.");
-        return (w, h, margin, gap);
+        var margins = new PageMargins(
+            ParseMm(MarginTopText, "Margem superior"), ParseMm(MarginRightText, "Margem direita"),
+            ParseMm(MarginBottomText, "Margem inferior"), ParseMm(MarginLeftText, "Margem esquerda"));
+        return (w, h, margins, ParseMm(GapText, "Espaçamento"));
     }
     private PrintBatch BuildBatch()
     {
@@ -566,7 +570,7 @@ public partial class MainWindow : Window
     private void GenerateClick(object sender, RoutedEventArgs e) => Run(() =>
     {
         var batch = BuildBatch(); var paper = Paper();
-        var document = renderer.Document(batch, paper.Width, paper.Height, paper.Margin, paper.Gap, CutMarks.IsChecked == true);
+        var document = renderer.Document(batch, paper.Width, paper.Height, paper.Margins, paper.Gap, CutMarks.IsChecked == true);
         currentBatch = batch; DocumentPreview.Document = document;
         store.SaveHistory(batch, "Prévia gerada", $"{batch.Items.Sum(x => x.Copies)} placas; {document.Pages.Count} páginas");
         RefreshHistory(); Status.Text = "Prévia gerada. A impressão usa o layout e os dados atuais do lote.";
@@ -587,16 +591,20 @@ public partial class MainWindow : Window
         var height = (chosen?.Height ?? PlateRenderer.Dip(paper.Height));
         if (dialog.PrintTicket.PageOrientation is PageOrientation.Landscape or PageOrientation.ReverseLandscape)
             (width, height) = (height, width);
-        var minimumMargin = area is null ? 0 : Math.Max(Math.Max(area.OriginWidth, area.OriginHeight),
-            Math.Max(width - area.OriginWidth - area.ExtentWidth, height - area.OriginHeight - area.ExtentHeight)) * 25.4 / 96;
-        var margin = Math.Max(paper.Margin, minimumMargin);
-        var document = renderer.Document(batch, width * 25.4 / 96, height * 25.4 / 96, margin, paper.Gap, CutMarks.IsChecked == true);
+        // Cada margem respeita a área não imprimível da impressora naquele lado, sem afetar os outros.
+        static double Mm(double dip) => Math.Max(0, dip) * 25.4 / 96;
+        var margins = new PageMargins(
+            Math.Max(paper.Margins.Top, area is null ? 0 : Mm(area.OriginHeight)),
+            Math.Max(paper.Margins.Right, area is null ? 0 : Mm(width - area.OriginWidth - area.ExtentWidth)),
+            Math.Max(paper.Margins.Bottom, area is null ? 0 : Mm(height - area.OriginHeight - area.ExtentHeight)),
+            Math.Max(paper.Margins.Left, area is null ? 0 : Mm(area.OriginWidth)));
+        var document = renderer.Document(batch, width * 25.4 / 96, height * 25.4 / 96, margins, paper.Gap, CutMarks.IsChecked == true);
         // The document must not be attached to two DocumentViewers simultaneously.
         // Detach any previous preview before displaying this document in the review dialog.
         DocumentPreview.Document = null;
         currentBatch = batch;
         // Modal review displays the exact document that will be sent to the driver.
-        if (!ReviewPrint(document, $"{dialog.PrintQueue.Name} • {document.Pages.Count} páginas • margem {margin:0.#} mm"))
+        if (!ReviewPrint(document, $"{dialog.PrintQueue.Name} • {document.Pages.Count} páginas • margens sup/dir/inf/esq {margins.Top:0.#}/{margins.Right:0.#}/{margins.Bottom:0.#}/{margins.Left:0.#} mm"))
         {
             DocumentPreview.Document = document;
             return;

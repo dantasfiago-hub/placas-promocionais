@@ -48,8 +48,11 @@ public sealed class PlateRenderer
     }
 
     public FixedDocument Document(PrintBatch batch, double widthMm, double heightMm, double marginMm, double gapMm, bool cutMarks)
+        => Document(batch, widthMm, heightMm, PageMargins.All(marginMm), gapMm, cutMarks);
+
+    public FixedDocument Document(PrintBatch batch, double widthMm, double heightMm, PageMargins margins, double gapMm, bool cutMarks)
     {
-        var (columns, rows) = Pagination.Grid(widthMm, heightMm, marginMm, gapMm, batch.Template);
+        var (columns, rows) = Pagination.Grid(widthMm, heightMm, margins, gapMm, batch.Template);
         var document = new FixedDocument();
         document.DocumentPaginator.PageSize = new Size(Dip(widthMm), Dip(heightMm));
         var products = batch.Items.SelectMany(x => Enumerable.Repeat(x.Product, x.Copies)).ToArray();
@@ -60,8 +63,8 @@ public sealed class PlateRenderer
             for (var index = 0; index < capacity && offset + index < products.Length; index++)
             {
                 var plate = Plate(batch.Template, products[offset + index]);
-                var x = Dip(marginMm + index % columns * (batch.Template.WidthMm + gapMm));
-                var y = Dip(marginMm + index / columns * (batch.Template.HeightMm + gapMm));
+                var x = Dip(margins.Left + index % columns * (batch.Template.WidthMm + gapMm));
+                var y = Dip(margins.Top + index / columns * (batch.Template.HeightMm + gapMm));
                 FixedPage.SetLeft(plate, x); FixedPage.SetTop(plate, y); page.Children.Add(plate);
                 if (cutMarks)
                 {

@@ -61,7 +61,8 @@ public interface IStore
 
 public static class FamilyPlates
 {
-
+    // Chave de agrupamento das placas coletivas. Prioridade: família com descrição; depois, o grupo
+    // da promoção (que tem descrição própria na planilha); por fim a família sem descrição (Build explica o erro).
     public static string? Key(PriceItem item)
     {
         var hasFamily = !string.IsNullOrWhiteSpace(item.Family);
@@ -71,6 +72,8 @@ public static class FamilyPlates
         return hasFamily ? "F:" + FamilyCode.Key(item.Family!) : null;
     }
 
+    // Monta o item da placa coletiva: a descrição passa a ser a da família (ou do grupo da promoção) e a
+    // condição comercial (preço, validade, quantidade) é a que todos os produtos marcados têm em comum.
     public static PriceItem Build(IReadOnlyList<PriceItem> items)
     {
         if (items.Count == 0) throw new InvalidOperationException("Nenhum produto informado.");
@@ -164,26 +167,42 @@ public sealed class BatchService
     }
 }
 
+// Margens da folha, cada lado independente (em mm).
+public sealed record PageMargins(double Top, double Right, double Bottom, double Left)
+{
+    public static PageMargins All(double value) => new(value, value, value, value);
+    public bool IsFinite => double.IsFinite(Top) && double.IsFinite(Right) && double.IsFinite(Bottom) && double.IsFinite(Left);
+}
+
 public static class Pagination
 {
-    public static (int Columns, int Rows) Grid(
+        public static (int Columns, int Rows) Grid(
         double pageWidthMm,
         double pageHeightMm,
         double margin,
         double gap,
         PlateTemplate template
+    ) => Grid(pageWidthMm, pageHeightMm, PageMargins.All(margin), gap, template);
+
+    public static (int Columns, int Rows) Grid(
+        double pageWidthMm,
+        double pageHeightMm,
+        PageMargins margins,
+        double gap,
+        PlateTemplate template
     )
     {
-        if (!double.IsFinite(margin) || !double.IsFinite(gap))
+        if (!margins.IsFinite || !double.IsFinite(gap))
             throw new InvalidOperationException(
-                "Margem e espaçamento precisam ser números válidos."
+                "Margens e espaçamento precisam ser números válidos."
             );
 
+        
         var columns = Math.Max(1, (int)Math.Floor(
-            (pageWidthMm - 2 * margin + gap) / (template.WidthMm + gap)));
+            (pageWidthMm - margins.Left - margins.Right + gap) / (template.WidthMm + gap)));
 
         var rows = Math.Max(1, (int)Math.Floor(
-            (pageHeightMm - 2 * margin + gap) / (template.HeightMm + gap)));
+            (pageHeightMm - margins.Top - margins.Bottom + gap) / (template.HeightMm + gap)));
 
         return (columns, rows);
     }

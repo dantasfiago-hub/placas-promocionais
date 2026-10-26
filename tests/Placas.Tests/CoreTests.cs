@@ -435,4 +435,25 @@ public class CoreTests
         }
         finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(dir, true); }
     }
+
+    [Fact] public void EachMarginIsAppliedIndependently()
+    {
+        var plate = PlateTemplate.Default(); // 95 x 135 mm
+        Assert.Equal((2, 2), Pagination.Grid(210, 297, new PageMargins(7, 7, 7, 7), 3, plate));
+        // Só a inferior grande: perde uma linha, mantém as colunas.
+        Assert.Equal((2, 1), Pagination.Grid(210, 297, new PageMargins(7, 7, 40, 7), 3, plate));
+        // Só a esquerda grande: perde uma coluna, mantém as linhas.
+        Assert.Equal((1, 2), Pagination.Grid(210, 297, new PageMargins(7, 7, 7, 30), 3, plate));
+        // Superior e inferior somam; esquerda e direita não interferem na altura.
+        Assert.Equal((2, 1), Pagination.Grid(210, 297, new PageMargins(25, 7, 25, 7), 3, plate));
+    }
+
+    [Fact] public void SingleMarginOverloadMatchesFourEqualMargins()
+        => Assert.Equal(
+            Pagination.Grid(210, 297, 7, 3, PlateTemplate.Default()),
+            Pagination.Grid(210, 297, PageMargins.All(7), 3, PlateTemplate.Default()));
+
+    [Fact] public void NonFiniteIndividualMarginIsRejected()
+        => Assert.Throws<InvalidOperationException>(() =>
+            Pagination.Grid(210, 297, new PageMargins(7, double.NaN, 7, 7), 3, PlateTemplate.Default()));
 }
