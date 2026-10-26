@@ -141,11 +141,11 @@
               <TextBlock Text="Data de venda:" VerticalAlignment="Center"/><DatePicker x:Name="SaleDate" Width="130" Margin="5"/>
               <ComboBox x:Name="PaperBox" SelectedIndex="0" Width="100"><ComboBoxItem Content="A4"/><ComboBoxItem Content="A3"/><ComboBoxItem Content="A5"/></ComboBox>
               <CheckBox x:Name="Landscape" Content="Paisagem" VerticalAlignment="Center" Margin="8"/>
-              <TextBlock Text="Margens mm — Sup." VerticalAlignment="Center"/><TextBox x:Name="MarginTopText" Width="42" Text="7" ToolTip="Margem superior"/>
-              <TextBlock Text="Dir." VerticalAlignment="Center"/><TextBox x:Name="MarginRightText" Width="42" Text="7" ToolTip="Margem direita"/>
-              <TextBlock Text="Inf." VerticalAlignment="Center"/><TextBox x:Name="MarginBottomText" Width="42" Text="7" ToolTip="Margem inferior"/>
-              <TextBlock Text="Esq." VerticalAlignment="Center"/><TextBox x:Name="MarginLeftText" Width="42" Text="7" ToolTip="Margem esquerda"/>
-              <TextBlock Text="Espaço mm" VerticalAlignment="Center"/><TextBox x:Name="GapText" Width="50" Text="3"/>
+              <TextBlock Text="Margens mm — Sup." VerticalAlignment="Center"/><TextBox x:Name="MarginTopText" Width="42" Text="0" ToolTip="Margem superior"/>
+              <TextBlock Text="Dir." VerticalAlignment="Center"/><TextBox x:Name="MarginRightText" Width="42" Text="0" ToolTip="Margem direita"/>
+              <TextBlock Text="Inf." VerticalAlignment="Center"/><TextBox x:Name="MarginBottomText" Width="42" Text="0" ToolTip="Margem inferior"/>
+              <TextBlock Text="Esq." VerticalAlignment="Center"/><TextBox x:Name="MarginLeftText" Width="42" Text="0" ToolTip="Margem esquerda"/>
+              <TextBlock Text="Espaço mm" VerticalAlignment="Center"/><TextBox x:Name="GapText" Width="50" Text="0"/>
               <CheckBox x:Name="CutMarks" Content="Contorno de corte" VerticalAlignment="Center" IsChecked="True" Margin="8"/>
             </WrapPanel>
             <WrapPanel>
