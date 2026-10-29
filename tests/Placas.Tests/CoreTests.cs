@@ -456,4 +456,122 @@ public class CoreTests
     [Fact] public void NonFiniteIndividualMarginIsRejected()
         => Assert.Throws<InvalidOperationException>(() =>
             Pagination.Grid(210, 297, new PageMargins(7, double.NaN, 7, 7), 3, PlateTemplate.Default()));
+
+    [Fact] public void ProductImageIsLinkedByCodeAndResolvedOnSearch()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var store = new SqliteStore(Path.Combine(dir, "test.db"));
+            store.SaveItem(Item() with { Id = "manual:img" });
+            var imageId = store.AddImage("foto", "hash-1", [1, 2, 3], [4, 5]);
+            // Arquivo idêntico (mesmo hash) não duplica a imagem.
+            Assert.Equal(imageId, store.AddImage("outro nome", "hash-1", [9], [9]));
+            Assert.Equal(imageId, store.FindImage("hash-1"));
+            Assert.Null(Assert.Single(store.Search("", null)).ImageId);
+
+            store.SetProductImage("000001", imageId); // aceita o código com zeros à esquerda
+            Assert.Equal(imageId, Assert.Single(store.Search("", null)).ImageId);
+            var info = Assert.Single(store.Images());
+            Assert.Equal("foto", info.Name); Assert.Equal(1, info.ProductCount); Assert.Equal(0, info.LayoutCount);
+            Assert.Equal(new byte[] { 1, 2, 3 }, store.GetImage(imageId));
+
+            store.SetProductImage("1", null);
+            Assert.Null(Assert.Single(store.Search("", null)).ImageId);
+        }
+        finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(dir, true); }
+    }
+
+    [Fact] public void ProductImageIsNotStoredInsideTheItem()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var store = new SqliteStore(Path.Combine(dir, "test.db"));
+            store.SaveItem(Item() with { ImageId = "fantasma" });
+            Assert.Null(Assert.Single(store.Search("", null)).ImageId);
+            Assert.Throws<InvalidOperationException>(() => store.SetProductImage("1", "inexistente"));
+        }
+        finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(dir, true); }
+    }
+
+    [Fact] public void ImageUsedByLayoutCannotBeDeleted()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var store = new SqliteStore(Path.Combine(dir, "test.db"));
+            var logo = store.AddImage("logo", "hash-logo", [1], [1]);
+            store.SetProductImage("1", logo);
+            var template = PlateTemplate.Default();
+            template.Elements.Add(new() { IsImage = true, Text = "", ImageId = logo, X = 0, Y = 0, Width = 10, Height = 10 });
+            PlateRules.ValidateTemplate(template);
+            store.SaveTemplate(template);
+            Assert.Equal(1, Assert.Single(store.Images()).LayoutCount);
+            Assert.Throws<InvalidOperationException>(() => store.DeleteImage(logo));
+
+            template.Elements.RemoveAt(template.Elements.Count - 1);
+            store.SaveTemplate(template);
+            Assert.Equal(1, store.DeleteImage(logo)); // 1 vínculo de produto removido
+            Assert.Empty(store.Images());
+        }
+        finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(dir, true); }
+    }
+
+    [Fact] public void ImageElementsSkipTextValidationAndSurviveSnapshot()
+    {
+        var template = PlateTemplate.Default();
+        template.Elements.Add(new() { IsImage = true, Text = "{inexistente}", ImageId = "abc", X = 0, Y = 0, Width = 10, Height = 10 });
+        PlateRules.ValidateTemplate(template); // o texto de um elemento de imagem é ignorado
+        var batch = new BatchService().Create([new(Item(), 1)], template, Date);
+        var copy = batch.Template.Elements[^1];
+        Assert.True(copy.IsImage); Assert.Equal("abc", copy.ImageId);
+    }
+
+    [Fact] public void ImageElementDoesNotSatisfyConditionFieldRequirement()
+    {
+        var template = PlateTemplate.Default();
+        template.Elements.RemoveAll(x => x.Text.Contains("{condicao}"));
+        template.Elements.Add(new() { IsImage = true, Text = "{condicao}", X = 0, Y = 0, Width = 10, Height = 10 });
+        Assert.Throws<InvalidOperationException>(() =>
+            new BatchService().Create([new(Item() with { Quantity = 2, Rule = QuantityRule.BundleTotal }, 1)], template, Date));
+    }
+
+    [Fact] public void OldTemplateWithoutImageFieldsStillLoads()
+    {
+        var json = """{"SchemaVersion":1,"Name":"Antigo","WidthMm":95,"HeightMm":135,"Background":"#FFF03B","Elements":[{"Text":"{descricao}","X":5,"Y":30,"Width":90,"Height":30,"FontSize":24,"MinFontSize":9,"Foreground":"#111827","Background":"#00FFFFFF","Bold":true}]}""";
+        var template = System.Text.Json.JsonSerializer.Deserialize<PlateTemplate>(json)!;
+        Assert.False(template.Elements[0].IsImage);
+        Assert.Equal("", template.Elements[0].ImageId);
+        PlateRules.ValidateTemplate(template);
+    }
+
+    [Fact] public void FamilyPlateDoesNotInheritAProductImage()
+    {
+        var a = Item() with { Id = "a", Family = "012", FamilyDescription = "LATICÍNIOS", ImageId = "foto-do-produto" };
+        Assert.Null(FamilyPlates.Build([a]).ImageId);
+    }
+
+    [Fact] public void DeleteItemsRemovesSeveralItemsAtOnceAndCleansEmptiedImports()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var store = new SqliteStore(Path.Combine(dir, "test.db"));
+            store.Import(new ImportBatch("h", "a.xlsx",
+                [Item() with { Id = "a" }, Item() with { Id = "b" }, Item() with { Id = "c" }], []));
+            Assert.Equal(2, store.DeleteItems(["a", "b", "a"])); // id repetido conta uma vez
+            Assert.Equal("c", Assert.Single(store.Search("", null)).Id);
+            Assert.Equal(1, Assert.Single(store.ListImports()).LinkedItems);
+            Assert.Equal(0, store.DeleteItems(["inexistente"]));
+            Assert.Equal(1, store.DeleteItems(["c"]));
+            Assert.Empty(store.ListImports()); // importação esvaziada some da lista
+            Assert.Equal(0, store.DeleteItems([]));
+        }
+        finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(dir, true); }
+    }
 }

@@ -24,7 +24,17 @@ public interface IStore
     bool Import(ImportBatch batch);
     void SaveItem(PriceItem item);
     void SaveFamily(FamilyInfo family);
+
+    // Biblioteca de imagens: logos e fotos. A imagem do produto é vinculada pelo código do produto.
+    string? FindImage(string hash);
+    string AddImage(string name, string hash, byte[] data, byte[] thumbnail);
+    List<ImageInfo> Images();
+    byte[]? GetImage(string id);
+    void RenameImage(string id, string name);
+    int DeleteImage(string id);
+    void SetProductImage(string code, string? imageId);
     void DeleteItem(string id);
+    int DeleteItems(IReadOnlyCollection<string> ids);
 
     List<ImportRecord> ListImports();
 
@@ -104,7 +114,8 @@ public static class FamilyPlates
             Description = description,
             SubDescription = null,
             FamilyDescription = isGroup ? first.FamilyDescription : description,
-            GroupDescription = isGroup ? description : first.GroupDescription
+            GroupDescription = isGroup ? description : first.GroupDescription,
+            ImageId = null // a foto de um produto não representa a família inteira
         };
     }
 }
@@ -176,7 +187,8 @@ public sealed record PageMargins(double Top, double Right, double Bottom, double
 
 public static class Pagination
 {
-        public static (int Columns, int Rows) Grid(
+    // Mantido para margem única nos quatro lados.
+    public static (int Columns, int Rows) Grid(
         double pageWidthMm,
         double pageHeightMm,
         double margin,
@@ -197,7 +209,8 @@ public static class Pagination
                 "Margens e espaçamento precisam ser números válidos."
             );
 
-        
+        // No mínimo 1 coluna e 1 linha: placa maior que o papel é posicionada
+        // na margem e a parte excedente é cortada na impressão.
         var columns = Math.Max(1, (int)Math.Floor(
             (pageWidthMm - margins.Left - margins.Right + gap) / (template.WidthMm + gap)));
 

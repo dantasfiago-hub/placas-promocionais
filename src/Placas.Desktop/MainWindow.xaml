@@ -8,35 +8,59 @@
       <TabItem Header="1. Produtos e importação">
         <DockPanel Margin="12">
           <StackPanel DockPanel.Dock="Top">
-            <WrapPanel>
-              <Button x:Name="ImportButton" Content="Importar XLS / XLSX" Click="ImportClick"/>
-              <Button Content="Cancelar leitura" Click="CancelImportClick"/>
-              <Button Content="Relatório da importação" Click="ImportReportClick"/>
-              <Button Content="Backup do banco" Click="BackupClick"/>
-              <Button Content="Abrir pasta de dados" Click="OpenDataClick"/>
-            </WrapPanel>
-            <WrapPanel Margin="0,10,0,10">
-              <TextBox x:Name="SearchText" Width="320" ToolTip="Código ou descrição" KeyDown="SearchKeyDown"/>
-              <ComboBox x:Name="SourceFilter" Width="160" SelectedIndex="0"><ComboBoxItem Content="Todas as origens"/><ComboBoxItem Content="Catálogo"/><ComboBoxItem Content="Ofertas"/><ComboBoxItem Content="Promoções"/></ComboBox>
-              <ComboBox x:Name="StatusFilter" Width="170" SelectedIndex="0" SelectionChanged="ProductFilterChanged" ToolTip="Filtrar por situação"><ComboBoxItem Content="Todas as situações"/><ComboBoxItem Content="Não vencidas"/><ComboBoxItem Content="Vencidas"/><ComboBoxItem Content="Requerem atenção"/></ComboBox>
-              <ComboBox x:Name="FamilyFilter" Width="170" SelectionChanged="ProductFilterChanged" ToolTip="Filtrar por família"/>
-              <Button Content="Pesquisar" Click="SearchClick"/>
-              <Button Content="Novo registro" Click="NewProductClick"/>
-              <Button Content="Editar selecionado" Click="EditProductClick"/>
-              <Button Content="Excluir selecionado" Click="DeleteProductClick"/>
-              <Button Content="Marcar exibidos" Click="SelectAllClick"/>
-              <Button Content="Desmarcar" Click="ClearSelectionClick"/>
-            </WrapPanel>
-            <TextBlock Text="Busca limitada a 500 condições; os filtros de situação e família atuam sobre esse resultado. Vermelho: vencida • Amarelo: regra a confirmar • Azul: futura. Passe o mouse sobre a linha para ver arquivo, aba e linha. Clique no cabeçalho para ordenar." TextWrapping="Wrap" Foreground="#526172" Margin="4,0,0,10"/>
+            <DockPanel Margin="0,0,0,4">
+              <TextBlock DockPanel.Dock="Left" Width="130" Text="Importação e dados" Style="{StaticResource GroupLabel}"/>
+              <WrapPanel>
+                <Button x:Name="ImportButton" Style="{StaticResource PrimaryButton}" Content="Importar XLS / XLSX" Click="ImportClick" ToolTip="Importa planilhas do VR Master (catálogo, ofertas e promoções)"/>
+                <Button Content="Cancelar leitura" Click="CancelImportClick"/>
+                <Button Content="Relatório da importação" Click="ImportReportClick"/>
+                <Button Content="Backup do banco" Click="BackupClick"/>
+                <Button Content="Abrir pasta de dados" Click="OpenDataClick"/>
+              </WrapPanel>
+            </DockPanel>
+            <DockPanel Margin="0,0,0,4">
+              <TextBlock DockPanel.Dock="Left" Width="130" Text="Buscar e filtrar" Style="{StaticResource GroupLabel}"/>
+              <WrapPanel>
+                <TextBox x:Name="SearchText" Width="300" ToolTip="Código ou descrição (Enter para pesquisar)" KeyDown="SearchKeyDown"/>
+                <ComboBox x:Name="SourceFilter" Width="150" SelectedIndex="0"><ComboBoxItem Content="Todas as origens"/><ComboBoxItem Content="Catálogo"/><ComboBoxItem Content="Ofertas"/><ComboBoxItem Content="Promoções"/></ComboBox>
+                <ComboBox x:Name="StatusFilter" Width="160" SelectedIndex="0" SelectionChanged="ProductFilterChanged" ToolTip="Filtrar por situação"><ComboBoxItem Content="Todas as situações"/><ComboBoxItem Content="Não vencidas"/><ComboBoxItem Content="Vencidas"/><ComboBoxItem Content="Requerem atenção"/></ComboBox>
+                <ComboBox x:Name="FamilyFilter" Width="170" SelectionChanged="ProductFilterChanged" ToolTip="Filtrar por família"/>
+                <Button Content="Pesquisar" Click="SearchClick"/>
+              </WrapPanel>
+            </DockPanel>
+            <DockPanel Margin="0,0,0,4">
+              <TextBlock DockPanel.Dock="Left" Width="130" Text="Seleção" Style="{StaticResource GroupLabel}"/>
+              <WrapPanel>
+                <Button Content="Marcar exibidos" Click="SelectAllClick" ToolTip="Marca todas as linhas exibidas (ou use a caixa do cabeçalho)"/>
+                <Button Content="Marcar destacados" Click="MarkHighlightedClick" ToolTip="Marca as linhas destacadas com Ctrl/Shift+clique (a barra de espaço faz o mesmo)"/>
+                <Button Content="Desmarcar tudo" Click="ClearSelectionClick"/>
+                <TextBlock x:Name="SelectionInfo" VerticalAlignment="Center" Margin="10,0,0,0" Foreground="#0F766E" FontWeight="SemiBold" Text="Nenhum item selecionado."/>
+              </WrapPanel>
+            </DockPanel>
+            <DockPanel Margin="0,0,0,4">
+              <TextBlock DockPanel.Dock="Left" Width="130" Text="Itens selecionados" Style="{StaticResource GroupLabel}"/>
+              <WrapPanel>
+                <Button Content="Novo registro" Click="NewProductClick"/>
+                <Button x:Name="EditProductButton" Content="Editar" Click="EditProductClick" ToolTip="Edita um item por vez"/>
+                <Button x:Name="DeleteProductButton" Style="{StaticResource DangerButton}" Content="Excluir" Click="DeleteProductClick" ToolTip="Exclui todos os itens marcados (ou destacados). Atalho: Delete"/>
+                <Button x:Name="ProductImageButton" Content="Imagem do produto…" Click="ProductImageClick" ToolTip="Vincula uma imagem da biblioteca ao produto"/>
+                <Button x:Name="ConfirmRuleButton" Content="Confirmar regra da promoção" Click="ConfirmRuleClick" ToolTip="Define se o valor da promoção é o total do conjunto ou por unidade, para todas as promoções selecionadas"/>
+              </WrapPanel>
+            </DockPanel>
+            <DockPanel Margin="0,0,0,8">
+              <TextBlock DockPanel.Dock="Left" Width="130" Text="Lote de placas" Style="{StaticResource GroupLabel}"/>
+              <WrapPanel>
+                <TextBlock Text="Cópias por item:" VerticalAlignment="Center"/>
+                <TextBox x:Name="CopiesText" Text="1" Width="55"/>
+                <Button x:Name="AddToBatchButton" Style="{StaticResource PrimaryButton}" Content="Adicionar ao lote" Click="AddToBatchClick" ToolTip="Adiciona uma placa por produto selecionado"/>
+                <Button x:Name="AddFamiliesButton" Style="{StaticResource PrimaryButton}" Content="Adicionar placas de família" Click="AddFamiliesToBatchClick" ToolTip="Gera uma placa por família (ou grupo de promoção) com a descrição dela. Itens sem família ficam de fora e são listados; os demais entram normalmente."/>
+              </WrapPanel>
+            </DockPanel>
           </StackPanel>
-          <WrapPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
-            <TextBlock Text="Cópias por item:" VerticalAlignment="Center"/>
-            <TextBox x:Name="CopiesText" Text="1" Width="55"/>
-            <Button Content="Adicionar marcados ao lote" Click="AddToBatchClick"/>
-            <Button Content="Adicionar famílias dos marcados" Click="AddFamiliesToBatchClick" ToolTip="Gera uma placa por família, com a descrição da família. Produtos de promoção sem família usam a descrição do grupo da promoção. Os produtos marcados do mesmo conjunto precisam ter a mesma condição."/>
-            <Button Content="Confirmar regra da promoção destacada" Click="ConfirmRuleClick"/>
-          </WrapPanel>
-          <DataGrid x:Name="ProductsGrid" SelectionMode="Single" RowHeight="42">
+          <Expander DockPanel.Dock="Bottom" Header="Legenda e dicas" Margin="0,8,0,0">
+            <TextBlock TextWrapping="Wrap" Foreground="#526172" Margin="4,6" Text="Marcar ou destacar: as ações valem para os itens marcados (caixa da primeira coluna); se nenhum estiver marcado, valem para as linhas destacadas (Ctrl/Shift+clique). Barra de espaço marca ou desmarca as linhas destacadas; Delete exclui. Busca limitada a 500 condições; os filtros de situação e família atuam sobre esse resultado. Cores: vermelho = vencida, amarelo = regra a confirmar, azul = futura. Passe o mouse sobre a linha para ver arquivo, aba e linha. Clique no cabeçalho para ordenar."/>
+          </Expander>
+          <DataGrid x:Name="ProductsGrid" SelectionMode="Extended" RowHeight="42" SelectionChanged="ProductsSelectionChanged" PreviewKeyDown="ProductsGridKeyDown">
             <DataGrid.Resources>
               <Style x:Key="CellText" TargetType="TextBlock"><Setter Property="VerticalAlignment" Value="Center"/><Setter Property="Margin" Value="6,0"/></Style>
               <Style x:Key="RightText" TargetType="TextBlock" BasedOn="{StaticResource CellText}"><Setter Property="TextAlignment" Value="Right"/></Style>
@@ -68,7 +92,14 @@
               </Style>
             </DataGrid.RowStyle>
             <DataGrid.Columns>
-              <DataGridCheckBoxColumn Header="✓" Binding="{Binding Selected, UpdateSourceTrigger=PropertyChanged}" Width="45"/>
+              <DataGridTemplateColumn Width="45" SortMemberPath="Selected">
+                <DataGridTemplateColumn.Header>
+                  <CheckBox HorizontalAlignment="Center" Click="MarkAllHeaderClick" ToolTip="Marcar ou desmarcar todos os exibidos"/>
+                </DataGridTemplateColumn.Header>
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate><CheckBox IsChecked="{Binding Selected, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Center" VerticalAlignment="Center"/></DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
               <DataGridTextColumn Header="Código" Binding="{Binding Item.DisplayCode}" Width="80" IsReadOnly="True" ElementStyle="{StaticResource CellText}"/>
               <DataGridTemplateColumn Header="Descrição" Width="*" MinWidth="200" SortMemberPath="Item.Description" IsReadOnly="True">
                 <DataGridTemplateColumn.CellTemplate>
@@ -91,6 +122,7 @@
               <DataGridTextColumn Header="Validade" Binding="{Binding Item.End, StringFormat=dd/MM/yyyy, TargetNullValue='—'}" Width="95" IsReadOnly="True" ElementStyle="{StaticResource CellText}"/>
               <DataGridTextColumn Header="Situação" Binding="{Binding Situation}" SortMemberPath="Level" Width="125" IsReadOnly="True" ElementStyle="{StaticResource SituationText}"/>
               <DataGridTextColumn Header="Família" Binding="{Binding FamilyLabel}" SortMemberPath="Item.Family" Width="160" IsReadOnly="True" ElementStyle="{StaticResource CellText}"/>
+              <DataGridTextColumn Header="Imagem" Binding="{Binding ImageMark}" SortMemberPath="HasImage" Width="65" IsReadOnly="True" ElementStyle="{StaticResource CellText}"/>
             </DataGrid.Columns>
           </DataGrid>
         </DockPanel>
@@ -100,7 +132,7 @@
           <WrapPanel DockPanel.Dock="Top">
             <ComboBox x:Name="TemplatesBox" Width="240" DisplayMemberPath="Name" SelectionChanged="TemplateChanged"/>
             <Button Content="Novo" Click="NewTemplateClick"/><Button Content="Duplicar" Click="DuplicateTemplateClick"/>
-            <Button Content="Salvar layout" Click="SaveTemplateClick"/><Button Content="Excluir" Click="DeleteTemplateClick"/>
+            <Button Content="Salvar layout" Click="SaveTemplateClick"/><Button Style="{StaticResource DangerButton}" Content="Excluir" Click="DeleteTemplateClick"/>
             <Button Content="Exportar JSON" Click="ExportTemplateClick"/><Button Content="Importar JSON" Click="ImportTemplateClick"/>
           </WrapPanel>
           <StackPanel DockPanel.Dock="Top" x:Name="TemplateFields">
@@ -116,7 +148,7 @@
           <Grid>
             <Grid.ColumnDefinitions><ColumnDefinition Width="3*"/><ColumnDefinition Width="2*"/></Grid.ColumnDefinitions>
             <DockPanel Margin="0,0,12,0">
-              <WrapPanel DockPanel.Dock="Bottom"><Button Content="Adicionar elemento" Click="AddElementClick"/><Button Content="Remover elemento" Click="RemoveElementClick"/><Button Content="Atualizar prévia" Click="TemplatePreviewClick"/></WrapPanel>
+              <WrapPanel DockPanel.Dock="Bottom"><Button Content="Adicionar elemento" Click="AddElementClick"/><Button Content="Adicionar imagem" Click="AddImageElementClick" ToolTip="Logo ou foto, sempre ao fundo (os textos aparecem por cima). Escolha uma imagem da biblioteca ou deixe em (imagem do produto)"/><Button Style="{StaticResource DangerButton}" Content="Remover elementos" Click="RemoveElementClick" ToolTip="Remove os elementos selecionados na lista (Ctrl/Shift+clique para vários)"/><Button Content="Atualizar prévia" Click="TemplatePreviewClick"/></WrapPanel>
               <DataGrid x:Name="ElementsGrid" CanUserDeleteRows="False">
                 <DataGrid.Columns>
                   <DataGridTextColumn Header="Texto / campo" Binding="{Binding Text, UpdateSourceTrigger=PropertyChanged}" Width="170"/>
@@ -126,6 +158,8 @@
                   <DataGridTextColumn Header="Cor" Binding="{Binding Foreground, UpdateSourceTrigger=PropertyChanged}" Width="90"/><DataGridTextColumn Header="Fundo" Binding="{Binding Background, UpdateSourceTrigger=PropertyChanged}" Width="100"/>
                   <DataGridCheckBoxColumn Header="Negrito" Binding="{Binding Bold, UpdateSourceTrigger=PropertyChanged}"/>
                   <DataGridCheckBoxColumn Header="Itálico" Binding="{Binding Italic, UpdateSourceTrigger=PropertyChanged}"/>
+                  <DataGridCheckBoxColumn Header="Imagem?" Binding="{Binding IsImage, UpdateSourceTrigger=PropertyChanged}"/>
+                  <DataGridComboBoxColumn x:Name="ImageColumn" Header="Qual imagem" SelectedValueBinding="{Binding ImageId, UpdateSourceTrigger=PropertyChanged}" SelectedValuePath="Id" DisplayMemberPath="Name" Width="170"/>
                 </DataGrid.Columns>
               </DataGrid>
             </DockPanel>
@@ -141,21 +175,21 @@
               <TextBlock Text="Data de venda:" VerticalAlignment="Center"/><DatePicker x:Name="SaleDate" Width="130" Margin="5"/>
               <ComboBox x:Name="PaperBox" SelectedIndex="0" Width="100"><ComboBoxItem Content="A4"/><ComboBoxItem Content="A3"/><ComboBoxItem Content="A5"/></ComboBox>
               <CheckBox x:Name="Landscape" Content="Paisagem" VerticalAlignment="Center" Margin="8"/>
-              <TextBlock Text="Margens mm — Sup." VerticalAlignment="Center"/><TextBox x:Name="MarginTopText" Width="42" Text="0" ToolTip="Margem superior"/>
-              <TextBlock Text="Dir." VerticalAlignment="Center"/><TextBox x:Name="MarginRightText" Width="42" Text="0" ToolTip="Margem direita"/>
-              <TextBlock Text="Inf." VerticalAlignment="Center"/><TextBox x:Name="MarginBottomText" Width="42" Text="0" ToolTip="Margem inferior"/>
-              <TextBlock Text="Esq." VerticalAlignment="Center"/><TextBox x:Name="MarginLeftText" Width="42" Text="0" ToolTip="Margem esquerda"/>
-              <TextBlock Text="Espaço mm" VerticalAlignment="Center"/><TextBox x:Name="GapText" Width="50" Text="0"/>
+              <TextBlock Text="Margens mm — Sup." VerticalAlignment="Center"/><TextBox x:Name="MarginTopText" Width="42" Text="7" ToolTip="Margem superior"/>
+              <TextBlock Text="Dir." VerticalAlignment="Center"/><TextBox x:Name="MarginRightText" Width="42" Text="7" ToolTip="Margem direita"/>
+              <TextBlock Text="Inf." VerticalAlignment="Center"/><TextBox x:Name="MarginBottomText" Width="42" Text="7" ToolTip="Margem inferior"/>
+              <TextBlock Text="Esq." VerticalAlignment="Center"/><TextBox x:Name="MarginLeftText" Width="42" Text="7" ToolTip="Margem esquerda"/>
+              <TextBlock Text="Espaço mm" VerticalAlignment="Center"/><TextBox x:Name="GapText" Width="50" Text="3"/>
               <CheckBox x:Name="CutMarks" Content="Contorno de corte" VerticalAlignment="Center" IsChecked="True" Margin="8"/>
             </WrapPanel>
             <WrapPanel>
               <Button Content="Gerar prévia" Click="GenerateClick"/><Button Content="Imprimir / PDF" Click="PrintClick"/>
-              <Button Content="Remover item destacado" Click="RemoveBatchItemClick"/><Button Content="Limpar lote" Click="ClearBatchClick"/>
+              <Button Style="{StaticResource DangerButton}" Content="Remover destacados" Click="RemoveBatchItemClick" ToolTip="Remove as linhas destacadas do lote (Ctrl/Shift+clique para várias). Atalho: Delete"/><Button Content="Limpar lote" Click="ClearBatchClick"/>
             </WrapPanel>
           </StackPanel>
           <Grid>
             <Grid.ColumnDefinitions><ColumnDefinition Width="2*"/><ColumnDefinition Width="3*"/></Grid.ColumnDefinitions>
-            <DataGrid x:Name="BatchGrid" Margin="0,8,10,0" SelectionMode="Single">
+            <DataGrid x:Name="BatchGrid" Margin="0,8,10,0" SelectionMode="Extended" PreviewKeyDown="BatchGridKeyDown">
               <DataGrid.Columns><DataGridTextColumn Header="Produto" Binding="{Binding Item.Description}" Width="*" IsReadOnly="True"/><DataGridTextColumn Header="Cópias" Binding="{Binding Copies}" Width="65"/></DataGrid.Columns>
             </DataGrid>
             <DocumentViewer x:Name="DocumentPreview" Grid.Column="1"/>
@@ -177,12 +211,12 @@
             <TextBlock Text="Gerenciar importações e limpar condições vencidas" FontSize="18" FontWeight="Bold" Margin="0,0,0,10"/>
             <WrapPanel>
               <Button Content="Atualizar lista" Click="RefreshImportsClick"/>
-              <Button Content="Excluir importação selecionada" Click="DeleteImportClick"/>
+              <Button Style="{StaticResource DangerButton}" Content="Excluir importações selecionadas" Click="DeleteImportClick" ToolTip="Selecione uma ou mais linhas (Ctrl/Shift+clique). Atalho: Delete"/>
               <Button Content="Limpar ofertas e promoções vencidas" Click="CleanExpiredClick"/>
             </WrapPanel>
             <TextBlock Text="Um backup é criado antes de qualquer exclusão. Layouts e histórico são preservados. Importações antigas sem vínculos não podem ser excluídas individualmente." TextWrapping="Wrap" Margin="4,10" Foreground="#526172"/>
           </StackPanel>
-          <DataGrid x:Name="ImportsGrid" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single">
+          <DataGrid x:Name="ImportsGrid" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Extended" PreviewKeyDown="ImportsGridKeyDown">
             <DataGrid.Resources>
               <Style x:Key="CellText" TargetType="TextBlock"><Setter Property="VerticalAlignment" Value="Center"/><Setter Property="Margin" Value="6,0"/></Style>
               <Style x:Key="RightText" TargetType="TextBlock" BasedOn="{StaticResource CellText}"><Setter Property="TextAlignment" Value="Right"/></Style>
@@ -196,6 +230,31 @@
               <DataGridTextColumn Header="Importado em" Binding="{Binding CreatedAt, StringFormat='dd/MM/yyyy HH:mm'}" Width="150" ElementStyle="{StaticResource CellText}"/>
               <DataGridTextColumn Header="Itens" Binding="{Binding LinkedItems, StringFormat=N0}" Width="90" ElementStyle="{StaticResource RightText}"/>
               <DataGridTextColumn Header="Situação" Binding="{Binding Status}" SortMemberPath="Record.Managed" Width="190" ElementStyle="{StaticResource ImportStatusText}"/>
+            </DataGrid.Columns>
+          </DataGrid>
+        </DockPanel>
+      </TabItem>
+      <TabItem Header="6. Imagens">
+        <DockPanel Margin="12">
+          <StackPanel DockPanel.Dock="Top">
+            <WrapPanel>
+              <Button Content="Adicionar imagens…" Click="AddImageClick"/>
+              <Button Content="Importar pasta (nome do arquivo = código do produto)" Click="ImportImageFolderClick"/>
+              <Button Style="{StaticResource DangerButton}" Content="Excluir selecionadas" Click="DeleteImageClick" ToolTip="Selecione uma ou mais imagens (Ctrl/Shift+clique). Atalho: Delete"/>
+            </WrapPanel>
+            <TextBlock TextWrapping="Wrap" Foreground="#526172" Margin="4,10" Text="Logos e fotos ficam guardados no banco de dados (reduzidas para até 1000 px). Para usar um logo, adicione-o aqui e, na aba Layouts salvos, use Adicionar imagem e escolha-o em Qual imagem. Para foto de produto, use Imagem do produto na aba 1 ou importe uma pasta com arquivos nomeados pelo código (ex.: 10486.jpg); no layout, deixe Qual imagem em (imagem do produto). Dê dois cliques no nome para renomear."/>
+          </StackPanel>
+          <DataGrid x:Name="ImagesGrid" AutoGenerateColumns="False" SelectionMode="Extended" RowHeight="56" CellEditEnding="ImagesCellEditEnding" PreviewKeyDown="ImagesGridKeyDown">
+            <DataGrid.Columns>
+              <DataGridTemplateColumn Header="Imagem" Width="90" IsReadOnly="True">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate><Image Source="{Binding Thumbnail}" Height="48" Margin="4" Stretch="Uniform"/></DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+              <DataGridTextColumn Header="Nome" Binding="{Binding Name}" Width="*"/>
+              <DataGridTextColumn Header="Tamanho" Binding="{Binding Size}" Width="90" IsReadOnly="True"/>
+              <DataGridTextColumn Header="Produtos" Binding="{Binding Products}" Width="90" IsReadOnly="True"/>
+              <DataGridTextColumn Header="Layouts" Binding="{Binding Layouts}" Width="90" IsReadOnly="True"/>
             </DataGrid.Columns>
           </DataGrid>
         </DockPanel>

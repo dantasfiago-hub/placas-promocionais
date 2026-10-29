@@ -24,6 +24,8 @@ public sealed class SqliteStore : IStore
             CREATE INDEX IF NOT EXISTS ix_items_code ON items(code);
             CREATE INDEX IF NOT EXISTS ix_items_source ON items(source);
             CREATE TABLE IF NOT EXISTS families(key TEXT PRIMARY KEY, code TEXT NOT NULL, description TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS images(id TEXT PRIMARY KEY, name TEXT NOT NULL, hash TEXT NOT NULL UNIQUE, data BLOB NOT NULL, thumb BLOB NOT NULL, created TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS product_images(code TEXT PRIMARY KEY, image_id TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS templates(id TEXT PRIMARY KEY, json TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS history(id TEXT PRIMARY KEY, created TEXT NOT NULL, status TEXT NOT NULL, detail TEXT NOT NULL, json TEXT NOT NULL);
             PRAGMA user_version=1;
@@ -85,7 +87,7 @@ public sealed class SqliteStore : IStore
                     imported = imported with { SubDescription = keptSub };
             }
             id.Value = imported.Id; code.Value = imported.Code; search.Value = SearchKey(imported.Description);
-            source.Value = (int)imported.Source; json.Value = JsonSerializer.Serialize(imported with { FamilyDescription = null });
+            source.Value = (int)imported.Source; json.Value = JsonSerializer.Serialize(imported with { FamilyDescription = null, ImageId = null });
             command.ExecuteNonQuery();
         }
         using var link = db.CreateCommand(); link.Transaction = transaction;
@@ -130,7 +132,7 @@ public sealed class SqliteStore : IStore
             item.Start > item.End || (item.Source == SourceKind.Promotion && item.Quantity != decimal.Truncate(item.Quantity)))
             throw new InvalidOperationException("Preço, quantidade ou período inválidos.");
         // A descrição da família vive na tabela "families"; não é gravada junto do item.
-        var normalized = item with { Code = ProductCode.Normalize(item.DisplayCode), FamilyDescription = null };
+        var normalized = item with { Code = ProductCode.Normalize(item.DisplayCode), FamilyDescription = null, ImageId = null };
         using var db = Open(); using var command = db.CreateCommand();
         command.CommandText = """
             INSERT INTO items(id,code,search,source,json) VALUES($id,$code,$search,$source,$json)
@@ -142,6 +144,111 @@ public sealed class SqliteStore : IStore
         command.Parameters.AddWithValue("$source", (int)normalized.Source);
         command.Parameters.AddWithValue("$json", JsonSerializer.Serialize(normalized));
         command.ExecuteNonQuery();
+    }
+
+    private static Dictionary<string, string> LoadProductImages(SqliteConnection db)
+    {
+        using var command = db.CreateCommand(); command.CommandText = "SELECT code,image_id FROM product_images";
+        var result = new Dictionary<string, string>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read()) result[reader.GetString(0)] = reader.GetString(1);
+        return result;
+    }
+
+    public string? FindImage(string hash)
+    {
+        using var db = Open(); using var command = db.CreateCommand();
+        command.CommandText = "SELECT id FROM images WHERE hash=$hash"; command.Parameters.AddWithValue("$hash", hash);
+        return command.ExecuteScalar() as string;
+    }
+
+    // Imagem idêntica (mesmo hash do arquivo original) não é duplicada: devolve a já existente.
+    public string AddImage(string name, string hash, byte[] data, byte[] thumbnail)
+    {
+        if (data.Length == 0 || thumbnail.Length == 0) throw new InvalidOperationException("Imagem vazia.");
+        using var db = Open(); using var tx = db.BeginTransaction();
+        using var find = db.CreateCommand(); find.Transaction = tx;
+        find.CommandText = "SELECT id FROM images WHERE hash=$hash"; find.Parameters.AddWithValue("$hash", hash);
+        if (find.ExecuteScalar() is string existing) { tx.Commit(); return existing; }
+        var id = Guid.NewGuid().ToString("N");
+        using var insert = db.CreateCommand(); insert.Transaction = tx;
+        insert.CommandText = "INSERT INTO images(id,name,hash,data,thumb,created) VALUES($id,$name,$hash,$data,$thumb,$created)";
+        insert.Parameters.AddWithValue("$id", id);
+        insert.Parameters.AddWithValue("$name", string.IsNullOrWhiteSpace(name) ? "Imagem" : name.Trim());
+        insert.Parameters.AddWithValue("$hash", hash);
+        insert.Parameters.AddWithValue("$data", data);
+        insert.Parameters.AddWithValue("$thumb", thumbnail);
+        insert.Parameters.AddWithValue("$created", DateTimeOffset.Now.ToString("O"));
+        insert.ExecuteNonQuery(); tx.Commit(); return id;
+    }
+
+    public List<ImageInfo> Images()
+    {
+        var layoutUse = new Dictionary<string, int>();
+        foreach (var template in Templates())
+            foreach (var id in template.Elements.Where(x => x.IsImage && !string.IsNullOrWhiteSpace(x.ImageId)).Select(x => x.ImageId).Distinct())
+                layoutUse[id] = layoutUse.GetValueOrDefault(id) + 1;
+        using var db = Open(); using var command = db.CreateCommand();
+        command.CommandText = "SELECT i.id, i.name, length(i.data), i.thumb, (SELECT COUNT(*) FROM product_images p WHERE p.image_id=i.id) FROM images i ORDER BY i.name COLLATE NOCASE, i.rowid";
+        var result = new List<ImageInfo>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+            result.Add(new ImageInfo(reader.GetString(0), reader.GetString(1), reader.GetInt32(2),
+                reader.GetFieldValue<byte[]>(3), reader.GetInt32(4), layoutUse.GetValueOrDefault(reader.GetString(0))));
+        return result;
+    }
+
+    public byte[]? GetImage(string id)
+    {
+        using var db = Open(); using var command = db.CreateCommand();
+        command.CommandText = "SELECT data FROM images WHERE id=$id"; command.Parameters.AddWithValue("$id", id);
+        return command.ExecuteScalar() as byte[];
+    }
+
+    public void RenameImage(string id, string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) throw new InvalidOperationException("O nome da imagem não pode ficar vazio.");
+        using var db = Open(); using var command = db.CreateCommand();
+        command.CommandText = "UPDATE images SET name=$name WHERE id=$id";
+        command.Parameters.AddWithValue("$id", id); command.Parameters.AddWithValue("$name", name.Trim());
+        command.ExecuteNonQuery();
+    }
+
+    // Recusa excluir imagem usada em layout; remove os vínculos com produtos e devolve quantos eram.
+    public int DeleteImage(string id)
+    {
+        var layouts = Templates().Where(t => t.Elements.Any(e => e.IsImage && e.ImageId == id)).Select(t => t.Name).ToList();
+        if (layouts.Count > 0)
+            throw new InvalidOperationException($"A imagem está em uso nos layouts: {string.Join(", ", layouts)}. Remova-a dos layouts antes de excluir.");
+        using var db = Open(); using var tx = db.BeginTransaction();
+        using var links = db.CreateCommand(); links.Transaction = tx;
+        links.CommandText = "DELETE FROM product_images WHERE image_id=$id"; links.Parameters.AddWithValue("$id", id);
+        var removed = links.ExecuteNonQuery();
+        using var image = db.CreateCommand(); image.Transaction = tx;
+        image.CommandText = "DELETE FROM images WHERE id=$id"; image.Parameters.AddWithValue("$id", id);
+        image.ExecuteNonQuery(); tx.Commit(); return removed;
+    }
+
+    // A imagem pertence ao produto (código), não a uma condição: vale para catálogo, oferta e promoção.
+    public void SetProductImage(string code, string? imageId)
+    {
+        var key = ProductCode.Normalize(code);
+        using var db = Open(); using var tx = db.BeginTransaction();
+        using var command = db.CreateCommand(); command.Transaction = tx;
+        if (string.IsNullOrWhiteSpace(imageId))
+        {
+            command.CommandText = "DELETE FROM product_images WHERE code=$code";
+            command.Parameters.AddWithValue("$code", key);
+        }
+        else
+        {
+            using var exists = db.CreateCommand(); exists.Transaction = tx;
+            exists.CommandText = "SELECT 1 FROM images WHERE id=$id"; exists.Parameters.AddWithValue("$id", imageId);
+            if (exists.ExecuteScalar() is null) throw new InvalidOperationException("Imagem não encontrada na biblioteca.");
+            command.CommandText = "INSERT INTO product_images(code,image_id) VALUES($code,$image) ON CONFLICT(code) DO UPDATE SET image_id=$image";
+            command.Parameters.AddWithValue("$code", key); command.Parameters.AddWithValue("$image", imageId);
+        }
+        command.ExecuteNonQuery(); tx.Commit();
     }
 
     public void SaveFamily(FamilyInfo family)
@@ -164,7 +271,7 @@ public sealed class SqliteStore : IStore
         using var write = db.CreateCommand(); write.Transaction = tx;
         write.CommandText = "UPDATE items SET json=$json WHERE id=$id";
         write.Parameters.AddWithValue("$id", id);
-        write.Parameters.AddWithValue("$json", JsonSerializer.Serialize(item with { GroupDescription = description, FamilyDescription = null }));
+        write.Parameters.AddWithValue("$json", JsonSerializer.Serialize(item with { GroupDescription = description, FamilyDescription = null, ImageId = null }));
         write.ExecuteNonQuery();
     }
 
@@ -187,18 +294,26 @@ public sealed class SqliteStore : IStore
         return result;
     }
 
-    public void DeleteItem(string id)
+    public void DeleteItem(string id) => DeleteItems([id]);
+
+    // Exclui vários itens numa única transação (tudo ou nada) e remove importações que ficaram sem itens.
+    public int DeleteItems(IReadOnlyCollection<string> ids)
     {
+        if (ids.Count == 0) return 0;
         using var db = Open(); using var tx = db.BeginTransaction();
-        var affected = ImportHashes(db, tx, "SELECT import_hash FROM import_items WHERE item_id=$id", ("$id", id));
-        using var links = db.CreateCommand(); links.Transaction = tx;
-        links.CommandText = "DELETE FROM import_items WHERE item_id=$id";
-        links.Parameters.AddWithValue("$id", id); links.ExecuteNonQuery();
-        using var command = db.CreateCommand(); command.Transaction = tx;
-        command.CommandText = "DELETE FROM items WHERE id=$id";
-        command.Parameters.AddWithValue("$id", id); command.ExecuteNonQuery();
+        var affected = new HashSet<string>(); var removed = 0;
+        foreach (var id in ids.Distinct())
+        {
+            foreach (var hash in ImportHashes(db, tx, "SELECT import_hash FROM import_items WHERE item_id=$id", ("$id", id))) affected.Add(hash);
+            using var links = db.CreateCommand(); links.Transaction = tx;
+            links.CommandText = "DELETE FROM import_items WHERE item_id=$id";
+            links.Parameters.AddWithValue("$id", id); links.ExecuteNonQuery();
+            using var command = db.CreateCommand(); command.Transaction = tx;
+            command.CommandText = "DELETE FROM items WHERE id=$id";
+            command.Parameters.AddWithValue("$id", id); removed += command.ExecuteNonQuery();
+        }
         RemoveEmptyImports(db, tx, affected);
-        tx.Commit();
+        tx.Commit(); return removed;
     }
 
     private static List<string> ImportHashes(SqliteConnection db, SqliteTransaction tx, string sql, params (string Name, object Value)[] args)
@@ -310,10 +425,13 @@ public sealed class SqliteStore : IStore
         command.Parameters.AddWithValue("$code", text.Trim().TrimStart('0'));
         command.Parameters.AddWithValue("$limit", Math.Clamp(limit, 1, 10000));
         var families = LoadFamilies(db);
+        var productImages = LoadProductImages(db);
         using var reader = command.ExecuteReader(); var result = new List<PriceItem>();
         while (reader.Read())
         {
             var item = JsonSerializer.Deserialize<PriceItem>(reader.GetString(0))!;
+            // Descrição da família e imagem do produto vivem em tabelas próprias e são resolvidas aqui.
+            item = item with { ImageId = productImages.GetValueOrDefault(item.Code) };
             result.Add(string.IsNullOrWhiteSpace(item.Family) ? item
                 : item with { FamilyDescription = families.GetValueOrDefault(FamilyCode.Key(item.Family)) });
         }

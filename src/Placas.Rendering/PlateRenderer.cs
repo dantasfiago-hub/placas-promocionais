@@ -1,7 +1,9 @@
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using Placas.Application;
 using Placas.Domain;
@@ -12,12 +14,75 @@ public sealed class PlateRenderer
 {
     public static double Dip(double mm) => mm * 96 / 25.4;
     private static Brush Brush(string color) => (Brush)new BrushConverter().ConvertFromString(color)!;
-    public Canvas Plate(PlateTemplate template, PriceItem item)
+    // Fornece os bytes de uma imagem da biblioteca pelo id (ligado ao banco pela janela principal).
+    public Func<string, byte[]?>? ImageLoader { get; set; }
+    private readonly Dictionary<string, BitmapSource> imageCache = [];
+    public void ClearImageCache() => imageCache.Clear();
+
+    private BitmapSource? LoadImage(string id, int decodeWidth)
+    {
+        var key = $"{id}@{decodeWidth}";
+        if (imageCache.TryGetValue(key, out var cached)) return cached;
+        var bytes = ImageLoader?.Invoke(id);
+        if (bytes is not { Length: > 0 }) return null;
+        var image = new BitmapImage();
+        image.BeginInit();
+        image.CacheOption = BitmapCacheOption.OnLoad;
+        image.DecodePixelWidth = decodeWidth; // evita manter fotos grandes na memória durante o lote
+        image.StreamSource = new MemoryStream(bytes);
+        image.EndInit();
+        image.Freeze();
+        if (imageCache.Count >= 24) imageCache.Clear();
+        return imageCache[key] = image;
+    }
+
+    private Border? ImageElement(PlateElement element, PriceItem item, bool placeholders)
+    {
+        var fixedImage = !string.IsNullOrWhiteSpace(element.ImageId);
+        var id = fixedImage ? element.ImageId : item.ImageId;
+        var decodeWidth = Math.Clamp((int)Math.Ceiling(element.Width / 25.4 * 300), 64, ImageTools.MaxSide);
+        var bitmap = string.IsNullOrWhiteSpace(id) ? null : LoadImage(id, decodeWidth);
+        if (fixedImage && bitmap is null && !placeholders)
+            throw new InvalidOperationException("Uma imagem fixa do layout não foi encontrada na biblioteca. Escolha outra imagem no layout.");
+        UIElement? content = null;
+        if (bitmap is not null)
+        {
+            var picture = new Image { Source = bitmap, Stretch = Stretch.Uniform };
+            RenderOptions.SetBitmapScalingMode(picture, BitmapScalingMode.HighQuality);
+            content = picture;
+        }
+        else if (placeholders)
+            content = new TextBlock
+            {
+                Text = fixedImage ? "Imagem não encontrada" : "Imagem do produto", Foreground = Brushes.Gray,
+                FontStyle = FontStyles.Italic, FontSize = 11, TextAlignment = TextAlignment.Center,
+                TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center
+            };
+        // Produto sem imagem: o elemento simplesmente não é desenhado.
+        if (content is null) return null;
+        var box = new Border
+        {
+            Width = Dip(element.Width), Height = Dip(element.Height),
+            Background = Brush(element.Background), ClipToBounds = true, Child = content
+        };
+        if (bitmap is null) { box.BorderBrush = Brushes.Gray; box.BorderThickness = new Thickness(1); }
+        return box;
+    }
+
+    public Canvas Plate(PlateTemplate template, PriceItem item, bool placeholders = false)
     {
         PlateRules.ValidateTemplate(template);
         var canvas = new Canvas { Width = Dip(template.WidthMm), Height = Dip(template.HeightMm), Background = Brush(template.Background), ClipToBounds = true };
-        foreach (var element in template.Elements)
+        // Imagens sempre ao fundo (a ordem entre elas é mantida); textos e demais elementos ficam por cima.
+        foreach (var element in template.Elements.OrderByDescending(x => x.IsImage))
         {
+            if (element.IsImage)
+            {
+                var box = ImageElement(element, item, placeholders);
+                if (box is null) continue;
+                Canvas.SetLeft(box, Dip(element.X)); Canvas.SetTop(box, Dip(element.Y)); canvas.Children.Add(box);
+                continue;
+            }
             var resolved = PlateRules.Resolve(element.Text, item);
             // Campo opcional sem valor (ex.: {subdescricao} vazia): não desenha o elemento, nem o fundo dele.
             if (string.IsNullOrWhiteSpace(resolved) && element.Text.Contains('{')) continue;

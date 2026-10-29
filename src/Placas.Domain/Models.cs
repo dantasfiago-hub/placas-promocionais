@@ -28,6 +28,9 @@ public static class FamilyCode
 
 public sealed record FamilyInfo(string Code, string Description);
 
+// Imagem da biblioteca (logo, foto de produto...). Thumbnail é uma miniatura pequena para listas.
+public sealed record ImageInfo(string Id, string Name, int Bytes, byte[] Thumbnail, int ProductCount, int LayoutCount);
+
 public enum SourceKind { Catalog, Offer, Promotion }
 public enum QuantityRule { Pending, UnitPrice, BundleTotal }
 public sealed record PriceItem(
@@ -35,7 +38,8 @@ public sealed record PriceItem(
     decimal Price, decimal? NormalPrice, DateOnly? Start, DateOnly? End,
     SourceKind Source, string? GroupCode, decimal Quantity,
     QuantityRule Rule, string FileName, string Sheet, int Row, string? Family = null,
-    string? SubDescription = null, string? FamilyDescription = null, string? GroupDescription = null);
+    string? SubDescription = null, string? FamilyDescription = null, string? GroupDescription = null,
+    string? ImageId = null);
 
 public sealed record ImportIssue(string Sheet, int Row, string Message);
 public sealed record ImportBatch(string Hash, string FileName, List<PriceItem> Items, List<ImportIssue> Issues,
@@ -57,7 +61,10 @@ public sealed class PlateElement
     public string Foreground { get; set; } = "#111827";
     public string Background { get; set; } = "#00FFFFFF";
     public bool Bold { get; set; } = true;
-    public bool Italic { get; set; } = false; 
+    public bool Italic { get; set; } = false;
+    // Elemento de imagem: ImageId vazio = imagem do produto; preenchido = imagem fixa da biblioteca (ex.: logo).
+    public bool IsImage { get; set; } = false;
+    public string ImageId { get; set; } = ""; 
 }
 
 public sealed class PlateTemplate
@@ -105,7 +112,7 @@ public static class PlateRules
                 e.Width <= 0 || e.Height <= 0 || e.FontSize <= 0 || e.MinFontSize <= 0)
                 throw new InvalidOperationException("Largura, altura e tamanhos de fonte devem ser números maiores que zero.");
             ValidateColor(e.Foreground); ValidateColor(e.Background);
-            foreach (Match match in Regex.Matches(e.Text ?? "", @"\{([^{}]+)\}"))
+            foreach (Match match in Regex.Matches(e.IsImage ? "" : e.Text ?? "", @"\{([^{}]+)\}"))
                 if (!Tokens.Contains(match.Groups[1].Value))
                     throw new InvalidOperationException($"Campo desconhecido: {match.Value}");
         }
@@ -124,10 +131,10 @@ public static class PlateRules
             throw new InvalidOperationException($"{item.DisplayCode}: condição fora da validade em {saleDate:dd/MM/yyyy}.");
         if (item.Source == SourceKind.Promotion && item.Rule == QuantityRule.Pending)
             throw new InvalidOperationException($"{item.DisplayCode}: confirme a regra da promoção antes de imprimir.");
-        if (template.Elements.Any(x => x.Text.Contains("{preco_normal}")) &&
+        if (template.Elements.Any(x => !x.IsImage && x.Text.Contains("{preco_normal}")) &&
             (item.NormalPrice is null || item.NormalPrice <= item.Price))
             throw new InvalidOperationException($"{item.DisplayCode}: preço normal ausente ou menor/igual ao promocional.");
-        if (item.Quantity > 1 && !template.Elements.Any(x => x.Text.Contains("{condicao}") || x.Text.Contains("{quantidade}")))
+        if (item.Quantity > 1 && !template.Elements.Any(x => !x.IsImage && (x.Text.Contains("{condicao}") || x.Text.Contains("{quantidade}"))))
             throw new InvalidOperationException("Promoções por quantidade exigem {condicao} ou {quantidade} no layout.");
         
     }

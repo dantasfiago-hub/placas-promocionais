@@ -56,6 +56,8 @@ public sealed class ProductRow(PriceItem item) : INotifyPropertyChanged
             };
         }
     }
+    public bool HasImage => !string.IsNullOrWhiteSpace(Item.ImageId);
+    public string ImageMark => HasImage ? "✓" : "";
     public string FamilyLabel => string.IsNullOrWhiteSpace(Item.Family) ? ""
         : string.IsNullOrWhiteSpace(Item.FamilyDescription) ? Item.Family! : $"{Item.Family} - {Item.FamilyDescription}";
     public bool HasSub => !string.IsNullOrWhiteSpace(Item.SubDescription);
@@ -67,6 +69,18 @@ public sealed class ProductRow(PriceItem item) : INotifyPropertyChanged
         $"Término: {Item.End?.ToString("dd/MM/yyyy") ?? "—"}",
         $"Grupo: {(string.IsNullOrWhiteSpace(Item.GroupCode) ? "—" : string.IsNullOrWhiteSpace(Item.GroupDescription) ? Item.GroupCode : $"{Item.GroupCode} - {Item.GroupDescription}")}");
     public event PropertyChangedEventHandler? PropertyChanged;
+}
+public sealed record ImageChoice(string Id, string Name);
+public sealed class ImageRow(ImageInfo info)
+{
+    private System.Windows.Media.ImageSource? thumbnail;
+    public string Id { get; } = info.Id;
+    public string Name { get; set; } = info.Name;
+    public string Size { get; } = info.Bytes >= 1_048_576 ? $"{info.Bytes / 1_048_576d:0.0} MB" : $"{info.Bytes / 1024d:0} KB";
+    public int Products { get; } = info.ProductCount;
+    public int Layouts { get; } = info.LayoutCount;
+    // Miniatura criada só quando a linha aparece, para listas grandes não travarem.
+    public System.Windows.Media.ImageSource? Thumbnail => thumbnail ??= MainWindow.ToBitmap(info.Thumbnail);
 }
 public sealed class ImportRow(ImportRecord record)
 {
@@ -92,6 +106,9 @@ public partial class MainWindow : Window
     private List<ProductRow> products = [];
     private List<ProductRow> allProducts = [];
     private bool loadingFilters;
+    private List<ImageChoice> imageChoices = [];
+    private const string ImageFilter = "Imagens|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tif;*.tiff";
+    private static readonly HashSet<string> ImageExtensions = [".png", ".jpg", ".jpeg", ".bmp", ".gif", ".tif", ".tiff"];
     private PlateTemplate? editing;
     private readonly DispatcherTimer previewTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
     private CancellationTokenSource? importCancellation;
@@ -117,7 +134,8 @@ public partial class MainWindow : Window
         BatchGrid.ItemsSource = basket;
         // Printing is only routed through our validated pipeline, including keyboard shortcuts.
         DocumentPreview.CommandBindings.Add(new CommandBinding(ApplicationCommands.Print, (_, e) => { PrintClick(this, e); e.Handled = true; }));
-        RefreshTemplates(); RefreshProducts(); RefreshHistory(); RefreshImports();
+        renderer.ImageLoader = store.GetImage;
+        RefreshTemplates(); RefreshProducts(); RefreshHistory(); RefreshImports(); RefreshImages();
     }
 
     private void OnDisplaySettingsChanged(object? sender, EventArgs e)
@@ -191,21 +209,31 @@ public partial class MainWindow : Window
     }
     private void DeleteImportClick(object sender, RoutedEventArgs e) => Run(() =>
     {
-        if (ImportsGrid.SelectedItem is not ImportRow importRow)
-            throw new InvalidOperationException("Selecione uma importação.");
-        var entry = importRow.Record;
-        var question = entry.Managed
-            ? $"Excluir a importação '{entry.Name}' e suas condições exclusivas?\n\nItens compartilhados com outras importações serão preservados."
-            : $"A importação '{entry.Name}' não tem itens associados (eles já foram removidos ou ela é anterior ao rastreamento).\n\nRemover apenas o registro? Isso permite importar o arquivo novamente. Nenhum produto será excluído.";
+        var rows = ImportsGrid.SelectedItems.OfType<ImportRow>().ToList();
+        if (rows.Count == 0) throw new InvalidOperationException("Selecione uma ou mais importações (Ctrl/Shift+clique).");
+        var withItems = rows.Count(x => x.Record.Managed);
+        var registryOnly = rows.Count - withItems;
+        var parts = new List<string>();
+        if (withItems > 0)
+            parts.Add($"{withItems} importação(ões) será(ão) excluída(s) junto com as condições exclusivas dela(s); itens compartilhados com outras importações são preservados");
+        if (registryOnly > 0)
+            parts.Add($"{registryOnly} sem itens associados terá(ão) só o registro removido, o que permite importar o arquivo de novo; nenhum produto é excluído");
+        var names = string.Join(Environment.NewLine, rows.Take(6).Select(x => "• " + x.Name))
+            + (rows.Count > 6 ? $"{Environment.NewLine}… e mais {rows.Count - 6}" : "");
+        var question = $"{names}{Environment.NewLine}{Environment.NewLine}{string.Join("." + Environment.NewLine, parts)}.{Environment.NewLine}{Environment.NewLine}Continuar?";
         if (MessageBox.Show(this, question, "Confirmar exclusão", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
         var backup = BackupBeforeMaintenance();
-        var removed = store.DeleteImport(entry.Hash);
+        var removed = 0;
+        foreach (var row in rows) removed += store.DeleteImport(row.Record.Hash);
         if (removed > 0) { basket.Clear(); InvalidatePreview(); }
         RefreshImports(); RefreshProducts();
-        Status.Text = entry.Managed
-            ? $"Importação excluída: {removed} itens. Backup: {backup}"
-            : $"Registro da importação removido. Backup: {backup}";
+        Status.Text = $"{rows.Count} importação(ões) tratada(s); {removed} condição(ões) removida(s). Backup: {backup}";
     });
+    private void ImportsGridKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.OriginalSource is TextBox || e.Key != Key.Delete) return;
+        DeleteImportClick(sender, e); e.Handled = true;
+    }
     private void CleanExpiredClick(object sender, RoutedEventArgs e) => Run(() =>
     {
         var today = DateOnly.FromDateTime(DateTime.Today);
@@ -235,21 +263,30 @@ public partial class MainWindow : Window
     });
     private void EditProductClick(object sender, RoutedEventArgs e) => Run(() =>
     {
-        if (ProductsGrid.SelectedItem is not ProductRow selected)
-            throw new InvalidOperationException("Selecione um produto, oferta ou promoção.");
-        EditProductDialog(selected.Item, false);
+        var targets = Targets();
+        if (targets.Count == 0) throw new InvalidOperationException("Marque ou destaque um produto, oferta ou promoção.");
+        if (targets.Count > 1)
+            throw new InvalidOperationException($"A edição funciona com um item por vez e há {targets.Count} selecionados. Desmarque os outros.");
+        EditProductDialog(targets[0].Item, false);
     });
     private void DeleteProductClick(object sender, RoutedEventArgs e) => Run(() =>
     {
-        if (ProductsGrid.SelectedItem is not ProductRow selected)
-            throw new InvalidOperationException("Selecione um registro.");
-        if (MessageBox.Show(this, $"Excluir '{selected.Item.Description}'? O histórico já impresso será preservado.",
-            "Confirmar exclusão", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+        var targets = Targets();
+        if (targets.Count == 0) throw new InvalidOperationException("Marque ou destaque os registros que deseja excluir.");
+        var nl = Environment.NewLine;
+        var question = targets.Count == 1
+            ? $"Excluir '{targets[0].Item.Description}'? O histórico já impresso será preservado."
+            : $"Excluir {targets.Count} registros?{nl}{nl}"
+              + string.Join(nl, targets.Take(6).Select(x => $"• {x.Item.DisplayCode} — {x.Item.Description}"))
+              + (targets.Count > 6 ? $"{nl}… e mais {targets.Count - 6}" : "")
+              + $"{nl}{nl}O histórico já impresso será preservado.";
+        if (MessageBox.Show(this, question, "Confirmar exclusão", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+        var ids = targets.Select(x => x.Item.Id).ToHashSet();
         var backup = BackupBeforeMaintenance();
-        store.DeleteItem(selected.Item.Id);
-        foreach (var row in basket.Where(x => x.Item.Id == selected.Item.Id).ToList()) basket.Remove(row);
+        var removed = store.DeleteItems(ids);
+        foreach (var row in basket.Where(x => ids.Contains(x.Item.Id)).ToList()) basket.Remove(row);
         InvalidatePreview(); RefreshProducts(); RefreshImports();
-        Status.Text = $"Registro excluído. Backup: {backup}";
+        Status.Text = $"{removed} registro(s) excluído(s). Backup: {backup}";
     });
     private void EditProductDialog(PriceItem item, bool creating)
     {
@@ -337,6 +374,7 @@ public partial class MainWindow : Window
     {
         SourceKind? source = SourceFilter.SelectedIndex == 0 ? null : (SourceKind)(SourceFilter.SelectedIndex - 1);
         allProducts = store.Search(SearchText.Text, source).Select(x => new ProductRow(x)).ToList();
+        foreach (var row in allProducts) row.PropertyChanged += OnProductRowChanged;
         var previous = FamilyFilter.SelectedItem as string;
         var families = allProducts.Select(x => x.FamilyLabel).Where(f => !string.IsNullOrEmpty(f))
             .Distinct(StringComparer.CurrentCultureIgnoreCase)
@@ -369,67 +407,173 @@ public partial class MainWindow : Window
             rows = rows.Where(x => string.Equals(x.FamilyLabel, family, StringComparison.CurrentCultureIgnoreCase));
         products = rows.ToList();
         ProductsGrid.ItemsSource = products;
+        UpdateSelectionInfo();
         var hidden = allProducts.Count - products.Count;
         Status.Text = $"{products.Count} condições exibidas{(hidden > 0 ? $" ({hidden} ocultas pelos filtros)" : "")} • {basket.Count} produtos no lote.";
     }
     private void SearchClick(object sender, RoutedEventArgs e) => Run(RefreshProducts);
     private void SearchKeyDown(object sender, KeyEventArgs e) { if (e.Key == Key.Enter) Run(RefreshProducts); }
-    private void SelectAllClick(object sender, RoutedEventArgs e) { foreach (var row in products) row.Selected = true; }
-    private void ClearSelectionClick(object sender, RoutedEventArgs e) { foreach (var row in products) row.Selected = false; }
+    // ---- Seleção: "marcados" (caixas) têm prioridade; sem marcados, valem as linhas destacadas (Ctrl/Shift+clique).
+    private IReadOnlyList<ProductRow> Targets()
+    {
+        var marked = products.Where(x => x.Selected).ToList();
+        return marked.Count > 0 ? marked : ProductsGrid.SelectedItems.OfType<ProductRow>().ToList();
+    }
+    private bool bulkMarking;
+    private void OnProductRowChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (!bulkMarking && e.PropertyName == nameof(ProductRow.Selected)) UpdateSelectionInfo();
+    }
+    private void SetMarked(IEnumerable<ProductRow> rows, bool value)
+    {
+        bulkMarking = true;
+        try { foreach (var row in rows) row.Selected = value; }
+        finally { bulkMarking = false; }
+        UpdateSelectionInfo();
+    }
+    private void ProductsSelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateSelectionInfo();
+    private void UpdateSelectionInfo()
+    {
+        // Eventos podem chegar durante o InitializeComponent, antes de os controles existirem.
+        if (ProductsGrid is null || SelectionInfo is null || AddFamiliesButton is null) return;
+        var marked = products.Count(x => x.Selected);
+        var highlighted = ProductsGrid.SelectedItems.Count;
+        var count = marked > 0 ? marked : highlighted;
+        SelectionInfo.Text = marked > 0 ? $"{marked} marcado(s): as ações valem para os marcados."
+            : highlighted > 0 ? $"{highlighted} destacado(s): as ações valem para os destacados."
+            : "Nenhum item selecionado: marque as caixas ou destaque linhas.";
+        EditProductButton.IsEnabled = count == 1;
+        ProductImageButton.IsEnabled = count == 1;
+        DeleteProductButton.IsEnabled = count > 0;
+        AddToBatchButton.IsEnabled = count > 0;
+        AddFamiliesButton.IsEnabled = count > 0;
+        ConfirmRuleButton.IsEnabled = Targets().Any(x => x.Item.Source == SourceKind.Promotion);
+    }
+    private void ProductsGridKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.OriginalSource is TextBox) return;
+        if (e.Key == Key.Space)
+        {
+            var rows = ProductsGrid.SelectedItems.OfType<ProductRow>().ToList();
+            if (rows.Count == 0) return;
+            SetMarked(rows, !rows.All(x => x.Selected));
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Delete && DeleteProductButton.IsEnabled)
+        {
+            DeleteProductClick(sender, e); e.Handled = true;
+        }
+    }
+    private void MarkAllHeaderClick(object sender, RoutedEventArgs e) => SetMarked(products, ((CheckBox)sender).IsChecked == true);
+    private void SelectAllClick(object sender, RoutedEventArgs e) => SetMarked(products, true);
+    private void ClearSelectionClick(object sender, RoutedEventArgs e) => SetMarked(allProducts, false);
+    private void MarkHighlightedClick(object sender, RoutedEventArgs e) => SetMarked(ProductsGrid.SelectedItems.OfType<ProductRow>().ToList(), true);
+
+    private int ReadCopies()
+    {
+        ProductsGrid.CommitEdit(DataGridEditingUnit.Cell, true);
+        return int.TryParse(CopiesText.Text, out var copies) && copies is >= 1 and <= 500
+            ? copies : throw new InvalidOperationException("Informe de 1 a 500 cópias por item.");
+    }
+    private void UpsertBatch(PriceItem item, int copies)
+    {
+        var existing = basket.FirstOrDefault(x => x.Item.Id == item.Id);
+        if (existing is null) basket.Add(new(item, copies));
+        else { existing.Item = item; existing.Copies = copies; }
+    }
+    // Lista o que ficou de fora de uma ação em lote, sem desfazer o que deu certo.
+    private void ShowSkipped(string title, string intro, IReadOnlyCollection<string> lines)
+    {
+        var nl = Environment.NewLine;
+        var text = intro + nl + nl + string.Join(nl, lines.Take(12).Select(x => "• " + x))
+            + (lines.Count > 12 ? $"{nl}… e mais {lines.Count - 12}." : "");
+        MessageBox.Show(this, text, title, MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
     private void AddToBatchClick(object sender, RoutedEventArgs e) => Run(() =>
     {
-        ProductsGrid.CommitEdit(DataGridEditingUnit.Cell, true);
-        if (!int.TryParse(CopiesText.Text, out var copies) || copies is < 1 or > 500) throw new InvalidOperationException("Informe 1 a 500 cópias.");
-        var chosen = products.Where(x => x.Selected).ToList();
-        if (chosen.Count == 0) throw new InvalidOperationException("Marque os produtos na primeira coluna.");
-        if (chosen.GroupBy(x => x.Item.Code).Any(x => x.Count() > 1) || chosen.Any(x => basket.Any(b => b.Item.Code == x.Item.Code && b.Item.Id != x.Item.Id)))
-            throw new InvalidOperationException("Há condições diferentes do mesmo produto. Selecione uma condição por produto.");
-        foreach (var row in chosen)
+        var copies = ReadCopies();
+        var chosen = Targets();
+        if (chosen.Count == 0) throw new InvalidOperationException("Marque ou destaque ao menos um produto.");
+        var accepted = new List<ProductRow>(); var skipped = new List<string>();
+        foreach (var group in chosen.GroupBy(x => x.Item.Code))
         {
-            var existing = basket.FirstOrDefault(x => x.Item.Id == row.Item.Id);
-            if (existing is null) basket.Add(new(row.Item, copies));
-            else { existing.Item = row.Item; existing.Copies = copies; }
-            row.Selected = false;
+            if (group.Count() > 1)
+            {
+                skipped.AddRange(group.Select(x => $"{x.Item.DisplayCode} — {x.Item.Description}: mais de uma condição escolhida ({x.Origin}); escolha só uma"));
+                continue;
+            }
+            var row = group.Single();
+            if (basket.Any(b => b.Item.Code == row.Item.Code && b.Item.Id != row.Item.Id))
+            {
+                skipped.Add($"{row.Item.DisplayCode} — {row.Item.Description}: já há outra condição deste produto no lote");
+                continue;
+            }
+            accepted.Add(row);
         }
+        foreach (var row in accepted) UpsertBatch(row.Item, copies);
+        SetMarked(accepted, false); // só desmarca o que entrou; o restante continua marcado para você corrigir
         BatchGrid.Items.Refresh(); InvalidatePreview();
-        Status.Text = $"{basket.Count} produtos no lote. Escolha o layout na aba Lote e impressão.";
+        Status.Text = $"{accepted.Count} produto(s) adicionado(s); {basket.Count} no lote. Escolha o layout na aba Lote e impressão.";
+        if (skipped.Count > 0)
+            ShowSkipped(accepted.Count > 0 ? "Alguns itens ficaram de fora" : "Nada foi adicionado",
+                accepted.Count > 0 ? "Os demais foram adicionados. Estes continuam marcados:" : "Estes itens não puderam entrar no lote:", skipped);
     });
+
     private void AddFamiliesToBatchClick(object sender, RoutedEventArgs e) => Run(() =>
     {
-        ProductsGrid.CommitEdit(DataGridEditingUnit.Cell, true);
-        if (!int.TryParse(CopiesText.Text, out var copies) || copies is < 1 or > 500) throw new InvalidOperationException("Informe 1 a 500 cópias.");
-        var chosen = products.Where(x => x.Selected).ToList();
-        if (chosen.Count == 0) throw new InvalidOperationException("Marque ao menos um produto de cada família na primeira coluna.");
+        var copies = ReadCopies();
+        var chosen = Targets();
+        if (chosen.Count == 0) throw new InvalidOperationException("Marque ou destaque ao menos um produto de cada família.");
         var keyed = chosen.Select(x => (Row: x, Key: FamilyPlates.Key(x.Item))).ToList();
-        var without = keyed.Where(x => x.Key is null).ToList();
-        if (without.Count > 0)
-            throw new InvalidOperationException($"{without.Count} produto(s) marcado(s) não têm família nem grupo de promoção com descrição (ex.: {without[0].Row.Item.Description}).");
-        var plates = keyed.GroupBy(x => x.Key!)
-            .Select(g => FamilyPlates.Build(g.Select(x => x.Row.Item).ToList())).ToList();
-        if (plates.Any(p => basket.Any(b => b.Item.Code == p.Code && b.Item.Id != p.Id)))
-            throw new InvalidOperationException("Já há uma condição diferente dessa família no lote. Remova-a antes de adicionar.");
-        foreach (var plate in plates)
+        var skipped = keyed.Where(x => x.Key is null)
+            .Select(x => $"{x.Row.Item.DisplayCode} — {x.Row.Item.Description}: sem família nem grupo de promoção com descrição").ToList();
+        var plates = new List<PriceItem>(); var used = new List<ProductRow>();
+        foreach (var group in keyed.Where(x => x.Key is not null).GroupBy(x => x.Key!))
         {
-            var existing = basket.FirstOrDefault(x => x.Item.Id == plate.Id);
-            if (existing is null) basket.Add(new(plate, copies));
-            else { existing.Item = plate; existing.Copies = copies; }
+            var rows = group.Select(x => x.Row).ToList();
+            try
+            {
+                var plate = FamilyPlates.Build(rows.Select(x => x.Item).ToList());
+                if (basket.Any(b => b.Item.Code == plate.Code && b.Item.Id != plate.Id))
+                    throw new InvalidOperationException("já há outra condição desta família no lote.");
+                plates.Add(plate); used.AddRange(rows);
+            }
+            catch (InvalidOperationException ex)
+            {
+                var label = !string.IsNullOrWhiteSpace(rows[0].Item.Family) ? $"Família {rows[0].FamilyLabel}"
+                    : $"Grupo {rows[0].Item.GroupCode} - {rows[0].Item.GroupDescription}";
+                skipped.Add($"{label}: {ex.Message}");
+            }
         }
-        foreach (var row in chosen) row.Selected = false;
+        foreach (var plate in plates) UpsertBatch(plate, copies);
+        SetMarked(used, false); // o que ficou de fora continua marcado
         BatchGrid.Items.Refresh(); InvalidatePreview();
-        Status.Text = $"{plates.Count} placa(s) de família/grupo no lote ({basket.Count} itens no total). Escolha o layout na aba Lote e impressão.";
+        Status.Text = $"{plates.Count} placa(s) de família/grupo adicionada(s); {basket.Count} no lote. Escolha o layout na aba Lote e impressão.";
+        if (skipped.Count > 0)
+            ShowSkipped(plates.Count > 0 ? "Alguns itens ficaram de fora" : "Nenhuma placa de família foi criada",
+                plates.Count > 0 ? "As placas possíveis foram adicionadas. Estes itens continuam marcados:" : "Estes itens não puderam virar placa de família:", skipped);
     });
+
     private void ConfirmRuleClick(object sender, RoutedEventArgs e) => Run(() =>
     {
-        if (ProductsGrid.SelectedItem is not ProductRow row || row.Item.Source != SourceKind.Promotion)
-            throw new InvalidOperationException("Destaque uma linha de promoção.");
+        var promotions = Targets().Where(x => x.Item.Source == SourceKind.Promotion).ToList();
+        if (promotions.Count == 0) throw new InvalidOperationException("Marque ou destaque ao menos uma linha de promoção.");
+        var nl = Environment.NewLine;
+        var sample = string.Join(nl, promotions.Take(5).Select(x => $"• {x.Item.Description} — {x.Item.Quantity:0.##} un., valor {x.Item.Price:C2}"));
+        var more = promotions.Count > 5 ? $"{nl}… e mais {promotions.Count - 5}" : "";
         var result = MessageBox.Show(this,
-            $"Confira a condição no VR Master antes de prosseguir.\n\n{row.Item.Description}\nQuantidade: {row.Item.Quantity} — Valor: {row.Item.Price:C2}\n\nSIM: o valor é o TOTAL do conjunto.\nNÃO: o valor é POR UNIDADE ao comprar a quantidade.\nCANCELAR: manter sem confirmação.",
+            $"Confira a condição no VR Master antes de prosseguir.{nl}{nl}{promotions.Count} promoção(ões):{nl}{sample}{more}{nl}{nl}SIM: o valor é o TOTAL do conjunto.{nl}NÃO: o valor é POR UNIDADE ao comprar a quantidade.{nl}CANCELAR: manter sem confirmação.",
             "Definir condição comercial", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
         if (result == MessageBoxResult.Cancel) return;
         var rule = result == MessageBoxResult.Yes ? QuantityRule.BundleTotal : QuantityRule.UnitPrice;
-        store.ConfirmPromotion(row.Item.Id, rule);
-        foreach (var b in basket.Where(x => x.Item.Id == row.Item.Id)) b.Item = b.Item with { Rule = rule };
+        foreach (var row in promotions)
+        {
+            store.ConfirmPromotion(row.Item.Id, rule);
+            foreach (var b in basket.Where(x => x.Item.Id == row.Item.Id)) b.Item = b.Item with { Rule = rule };
+        }
         InvalidatePreview(); RefreshProducts();
+        Status.Text = $"Condição definida para {promotions.Count} promoção(ões).";
     });
 
     private void RefreshTemplates(string? selectedId = null)
@@ -489,7 +633,7 @@ public partial class MainWindow : Window
         try
         {
             PlateRules.ValidateTemplate(editing);
-            var plate = renderer.Plate(editing, Example());
+            var plate = renderer.Plate(editing, Example(), placeholders: true);
             TemplatePreview.Child = plate;
             PreviewStatus.Text = "Prévia atualizada automaticamente. Clique em Salvar layout para guardar as alterações.";
         }
@@ -542,9 +686,211 @@ public partial class MainWindow : Window
     });
     private void RemoveElementClick(object sender, RoutedEventArgs e)
     {
-        if (ElementsGrid.SelectedItem is PlateElement element) { editing?.Elements.Remove(element); ElementsGrid.Items.Refresh(); QueueEditorPreview(); }
+        var elements = ElementsGrid.SelectedItems.OfType<PlateElement>().ToList();
+        if (elements.Count == 0 || editing is null) return;
+        foreach (var element in elements) editing.Elements.Remove(element);
+        ElementsGrid.Items.Refresh(); QueueEditorPreview();
     }
+    private void AddImageElementClick(object sender, RoutedEventArgs e) => Run(() =>
+    {
+        if (editing is null) return;
+        var size = Math.Min(30, Math.Min(editing.WidthMm, editing.HeightMm));
+        editing.Elements.Add(new() { IsImage = true, Text = "", X = 0, Y = 0, Width = size, Height = size, Background = "#00FFFFFF" });
+        ElementsGrid.Items.Refresh(); QueueEditorPreview();
+    });
     private void TemplatePreviewClick(object sender, RoutedEventArgs e) => Run(UpdateTemplatePreview);
+
+    internal static System.Windows.Media.Imaging.BitmapImage? ToBitmap(byte[]? bytes, int decodeWidth = 0)
+    {
+        if (bytes is not { Length: > 0 }) return null;
+        var image = new System.Windows.Media.Imaging.BitmapImage();
+        image.BeginInit();
+        image.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+        if (decodeWidth > 0) image.DecodePixelWidth = decodeWidth;
+        image.StreamSource = new MemoryStream(bytes);
+        image.EndInit(); image.Freeze();
+        return image;
+    }
+
+    private void RefreshImages()
+    {
+        var infos = store.Images();
+        ImagesGrid.ItemsSource = infos.Select(x => new ImageRow(x)).ToList();
+        SetImageChoices(infos);
+    }
+    private void RefreshImageChoices() => SetImageChoices(store.Images());
+    private void SetImageChoices(List<ImageInfo> infos)
+    {
+        imageChoices = [new("", "(imagem do produto)"), .. infos.Select(x => new ImageChoice(x.Id, x.Name))];
+        ImageColumn.ItemsSource = imageChoices;
+    }
+    // Depois de qualquer mudança na biblioteca: limpa o cache, atualiza listas, produtos e prévias.
+    private void NotifyImagesChanged()
+    {
+        renderer.ClearImageCache(); RefreshImages(); RefreshProducts(); InvalidatePreview(); QueueEditorPreview();
+    }
+
+    // Lê o arquivo, reduz e grava na biblioteca. Arquivo idêntico a um já existente reaproveita o registro.
+    private string AddImageFile(string path, string? name = null)
+    {
+        var info = new FileInfo(path);
+        if (info.Length > 30 * 1024 * 1024) throw new InvalidOperationException($"{info.Name}: arquivo maior que 30 MB.");
+        var source = File.ReadAllBytes(path);
+        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(source));
+        if (store.FindImage(hash) is { } existing) return existing;
+        byte[] data, thumbnail;
+        try { (data, thumbnail) = ImageTools.Prepare(source); }
+        catch (Exception ex) when (ex is NotSupportedException or FileFormatException or ArgumentException
+            or InvalidOperationException or System.Runtime.InteropServices.COMException)
+        {
+            throw new InvalidOperationException($"{info.Name}: não é uma imagem válida ({ex.Message}).");
+        }
+        return store.AddImage(name ?? Path.GetFileNameWithoutExtension(path), hash, data, thumbnail);
+    }
+
+    private void AddImageClick(object sender, RoutedEventArgs e) => Run(() =>
+    {
+        var dialog = new OpenFileDialog { Filter = ImageFilter, Multiselect = true, Title = "Adicionar imagens à biblioteca" };
+        if (dialog.ShowDialog(this) != true) return;
+        var added = 0; var problems = new List<string>();
+        Mouse.OverrideCursor = Cursors.Wait;
+        try
+        {
+            foreach (var file in dialog.FileNames)
+            {
+                try { AddImageFile(file); added++; }
+                catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException) { problems.Add(ex.Message); }
+            }
+        }
+        finally { Mouse.OverrideCursor = null; }
+        NotifyImagesChanged();
+        Status.Text = $"{added} imagem(ns) na biblioteca.";
+        if (problems.Count > 0)
+            MessageBox.Show(this, string.Join(Environment.NewLine, problems.Take(8)), "Algumas imagens não foram adicionadas", MessageBoxButton.OK, MessageBoxImage.Warning);
+    });
+
+    private void ImportImageFolderClick(object sender, RoutedEventArgs e) => Run(() =>
+    {
+        var dialog = new OpenFolderDialog { Title = "Pasta com imagens nomeadas pelo código do produto (ex.: 10486.jpg)" };
+        if (dialog.ShowDialog(this) != true) return;
+        var files = Directory.EnumerateFiles(dialog.FolderName)
+            .Where(f => ImageExtensions.Contains(Path.GetExtension(f).ToLowerInvariant())).ToList();
+        if (files.Count == 0) throw new InvalidOperationException("Nenhuma imagem (png, jpg, bmp, gif, tif) encontrada na pasta.");
+        int linked = 0, skipped = 0; var problems = new List<string>();
+        Mouse.OverrideCursor = Cursors.Wait;
+        try
+        {
+            foreach (var file in files)
+            {
+                var code = Path.GetFileNameWithoutExtension(file).Trim();
+                if (code.Length == 0 || !code.All(char.IsAsciiDigit)) { skipped++; continue; }
+                try { store.SetProductImage(ProductCode.Normalize(code), AddImageFile(file)); linked++; }
+                catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException) { problems.Add(ex.Message); }
+            }
+        }
+        finally { Mouse.OverrideCursor = null; }
+        NotifyImagesChanged();
+        var text = $"{linked} imagem(ns) vinculada(s) a produtos pelo código.";
+        if (skipped > 0) text += $"{Environment.NewLine}{skipped} arquivo(s) ignorado(s): o nome não é apenas o código do produto.";
+        if (problems.Count > 0) text += $"{Environment.NewLine}{problems.Count} com problema:{Environment.NewLine}" + string.Join(Environment.NewLine, problems.Take(8));
+        Status.Text = $"{linked} imagem(ns) vinculada(s) a produtos pelo código.";
+        MessageBox.Show(this, text, "Importar imagens da pasta", MessageBoxButton.OK, MessageBoxImage.Information);
+    });
+
+    private void DeleteImageClick(object sender, RoutedEventArgs e) => Run(() =>
+    {
+        var rows = ImagesGrid.SelectedItems.OfType<ImageRow>().ToList();
+        if (rows.Count == 0) throw new InvalidOperationException("Selecione uma ou mais imagens (Ctrl/Shift+clique).");
+        var question = rows.Count == 1 ? $"Excluir a imagem '{rows[0].Name}'?" : $"Excluir {rows.Count} imagens?";
+        var linked = rows.Sum(x => x.Products);
+        if (linked > 0) question += $"{Environment.NewLine}{Environment.NewLine}{linked} vínculo(s) com produtos será(ão) removido(s).";
+        if (MessageBox.Show(this, question, "Excluir imagem", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+        var deleted = 0; var failed = new List<string>();
+        foreach (var row in rows)
+        {
+            try { store.DeleteImage(row.Id); deleted++; }
+            catch (InvalidOperationException ex) { failed.Add($"{row.Name}: {ex.Message}"); }
+        }
+        NotifyImagesChanged();
+        Status.Text = $"{deleted} imagem(ns) excluída(s) da biblioteca.";
+        if (failed.Count > 0) ShowSkipped("Algumas imagens não foram excluídas", "Estas imagens continuam na biblioteca:", failed);
+    });
+    private void ImagesGridKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.OriginalSource is TextBox || e.Key != Key.Delete) return;
+        DeleteImageClick(sender, e); e.Handled = true;
+    }
+    private void ImagesCellEditEnding(object sender, DataGridCellEditEndingEventArgs e) => Run(() =>
+    {
+        if (e.EditAction != DataGridEditAction.Commit || e.Row.Item is not ImageRow row || e.EditingElement is not TextBox box) return;
+        var name = box.Text.Trim();
+        if (name.Length == 0) { e.Cancel = true; throw new InvalidOperationException("O nome da imagem não pode ficar vazio."); }
+        store.RenameImage(row.Id, name);
+        Dispatcher.BeginInvoke(new Action(RefreshImageChoices));
+    });
+
+    private void ProductImageClick(object sender, RoutedEventArgs e) => Run(() =>
+    {
+        var targets = Targets();
+        if (targets.Count == 0) throw new InvalidOperationException("Marque ou destaque o produto.");
+        if (targets.Count > 1)
+            throw new InvalidOperationException($"A imagem é definida para um produto por vez e há {targets.Count} selecionados. Para muitos produtos, use a aba Imagens e importe uma pasta com arquivos nomeados pelo código.");
+        var row = targets[0];
+        var (ok, imageId) = PickImageDialog($"Imagem do produto {row.Item.DisplayCode}", row.Item.ImageId);
+        if (!ok) return;
+        store.SetProductImage(row.Item.Code, imageId);
+        var marked = allProducts.Where(x => x.Selected).Select(x => x.Item.Id).ToHashSet();
+        NotifyImagesChanged();
+        SetMarked(allProducts.Where(x => marked.Contains(x.Item.Id)), true);
+        Status.Text = imageId is null
+            ? "Imagem do produto removida."
+            : "Imagem vinculada ao produto (vale para catálogo, ofertas e promoções dele).";
+    });
+
+    private (bool Ok, string? ImageId) PickImageDialog(string title, string? currentId)
+    {
+        var window = new Window
+        {
+            Title = title, Width = 460, SizeToContent = SizeToContent.Height, Owner = this,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner, ResizeMode = ResizeMode.NoResize, ShowInTaskbar = false
+        };
+        var combo = new ComboBox { DisplayMemberPath = nameof(ImageChoice.Name), SelectedValuePath = nameof(ImageChoice.Id), Margin = new Thickness(0, 0, 0, 8) };
+        var preview = new Image { Height = 180, Stretch = System.Windows.Media.Stretch.Uniform, Margin = new Thickness(0, 10, 0, 10) };
+        (bool Ok, string? ImageId) result = (false, null);
+        void Load(string? selected)
+        {
+            var choices = new List<ImageChoice> { new("", "(sem imagem)") };
+            choices.AddRange(store.Images().Select(i => new ImageChoice(i.Id, i.Name)));
+            combo.ItemsSource = choices;
+            combo.SelectedValue = string.IsNullOrWhiteSpace(selected) ? "" : selected;
+        }
+        combo.SelectionChanged += (_, _) =>
+            preview.Source = combo.SelectedValue is string chosen && chosen.Length > 0 ? ToBitmap(store.GetImage(chosen), 360) : null;
+        var add = new Button { Content = "Adicionar nova imagem…", HorizontalAlignment = HorizontalAlignment.Left, Padding = new Thickness(10, 3, 10, 3) };
+        add.Click += (_, _) => Run(() =>
+        {
+            var dialog = new OpenFileDialog { Filter = ImageFilter, Title = "Escolher imagem" };
+            if (dialog.ShowDialog(window) != true) return;
+            var newId = AddImageFile(dialog.FileName);
+            renderer.ClearImageCache(); RefreshImages(); Load(newId);
+        });
+        var save = new Button { Content = "Salvar", IsDefault = true, Width = 90, Margin = new Thickness(0, 0, 8, 0) };
+        save.Click += (_, _) =>
+        {
+            result = (true, combo.SelectedValue is string chosen && chosen.Length > 0 ? chosen : null);
+            window.DialogResult = true;
+        };
+        var cancel = new Button { Content = "Cancelar", IsCancel = true, Width = 90 };
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+        buttons.Children.Add(save); buttons.Children.Add(cancel);
+        var panel = new StackPanel { Margin = new Thickness(18) };
+        panel.Children.Add(new TextBlock { Text = "Escolha a imagem na biblioteca:", Margin = new Thickness(0, 0, 0, 6) });
+        panel.Children.Add(combo); panel.Children.Add(add); panel.Children.Add(preview); panel.Children.Add(buttons);
+        window.Content = panel;
+        Load(currentId);
+        window.ShowDialog();
+        return result;
+    }
 
     private static double ParseMm(TextBox box, string name)
         => double.TryParse(box.Text, out var value) && double.IsFinite(value)
@@ -641,8 +987,26 @@ public partial class MainWindow : Window
         viewer.Document = null;
         return confirmed;
     }
-    private void RemoveBatchItemClick(object sender, RoutedEventArgs e) { if (BatchGrid.SelectedItem is BatchRow row) basket.Remove(row); InvalidatePreview(); }
-    private void ClearBatchClick(object sender, RoutedEventArgs e) { basket.Clear(); InvalidatePreview(); }
+    private void RemoveBatchItemClick(object sender, RoutedEventArgs e)
+    {
+        var rows = BatchGrid.SelectedItems.OfType<BatchRow>().ToList();
+        if (rows.Count == 0) { Status.Text = "Destaque os itens do lote que deseja remover (Ctrl/Shift+clique para vários)."; return; }
+        foreach (var row in rows) basket.Remove(row);
+        InvalidatePreview();
+        Status.Text = $"{rows.Count} item(ns) removido(s) do lote; restam {basket.Count}.";
+    }
+    private void ClearBatchClick(object sender, RoutedEventArgs e)
+    {
+        if (basket.Count == 0) return;
+        if (basket.Count > 1 && MessageBox.Show(this, $"Remover todos os {basket.Count} itens do lote?", "Limpar lote",
+            MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+        basket.Clear(); InvalidatePreview();
+    }
+    private void BatchGridKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.OriginalSource is TextBox || e.Key != Key.Delete) return;
+        RemoveBatchItemClick(sender, e); e.Handled = true;
+    }
     private void RefreshHistory() => HistoryGrid.ItemsSource = store.History();
     private void RefreshHistoryClick(object sender, RoutedEventArgs e) => Run(RefreshHistory);
     private void LoadHistoryClick(object sender, RoutedEventArgs e) => Run(() =>
