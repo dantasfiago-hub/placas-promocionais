@@ -43,7 +43,8 @@
                 <Button Content="Novo registro" Click="NewProductClick"/>
                 <Button x:Name="EditProductButton" Content="Editar" Click="EditProductClick" ToolTip="Edita um item por vez"/>
                 <Button x:Name="DeleteProductButton" Style="{StaticResource DangerButton}" Content="Excluir" Click="DeleteProductClick" ToolTip="Exclui todos os itens marcados (ou destacados). Atalho: Delete"/>
-                <Button x:Name="ProductImageButton" Content="Imagem do produto…" Click="ProductImageClick" ToolTip="Vincula uma imagem da biblioteca ao produto"/>
+                <Button x:Name="ProductImageButton" Content="Imagem do produto…" Click="ProductImageClick" ToolTip="Vincula uma imagem da biblioteca ao produto (vale para catálogo, ofertas e promoções dele)"/>
+                <Button x:Name="FamilyImageButton" Content="Imagem da família…" Click="FamilyImageClick" ToolTip="Vincula uma imagem da biblioteca à família dos itens selecionados (vale para todos os produtos dela e para a placa da família)"/>
                 <Button x:Name="ConfirmRuleButton" Content="Confirmar regra da promoção" Click="ConfirmRuleClick" ToolTip="Define se o valor da promoção é o total do conjunto ou por unidade, para todas as promoções selecionadas"/>
               </WrapPanel>
             </DockPanel>
@@ -122,7 +123,7 @@
               <DataGridTextColumn Header="Validade" Binding="{Binding Item.End, StringFormat=dd/MM/yyyy, TargetNullValue='—'}" Width="95" IsReadOnly="True" ElementStyle="{StaticResource CellText}"/>
               <DataGridTextColumn Header="Situação" Binding="{Binding Situation}" SortMemberPath="Level" Width="125" IsReadOnly="True" ElementStyle="{StaticResource SituationText}"/>
               <DataGridTextColumn Header="Família" Binding="{Binding FamilyLabel}" SortMemberPath="Item.Family" Width="160" IsReadOnly="True" ElementStyle="{StaticResource CellText}"/>
-              <DataGridTextColumn Header="Imagem" Binding="{Binding ImageMark}" SortMemberPath="HasImage" Width="65" IsReadOnly="True" ElementStyle="{StaticResource CellText}"/>
+              <DataGridTextColumn Header="Imagem" Binding="{Binding ImageMark}" SortMemberPath="HasImage" Width="80" IsReadOnly="True" ElementStyle="{StaticResource CellText}"/>
             </DataGrid.Columns>
           </DataGrid>
         </DockPanel>
@@ -148,7 +149,18 @@
           <Grid>
             <Grid.ColumnDefinitions><ColumnDefinition Width="3*"/><ColumnDefinition Width="2*"/></Grid.ColumnDefinitions>
             <DockPanel Margin="0,0,12,0">
-              <WrapPanel DockPanel.Dock="Bottom"><Button Content="Adicionar elemento" Click="AddElementClick"/><Button Content="Adicionar imagem" Click="AddImageElementClick" ToolTip="Logo ou foto, sempre ao fundo (os textos aparecem por cima). Escolha uma imagem da biblioteca ou deixe em (imagem do produto)"/><Button Style="{StaticResource DangerButton}" Content="Remover elementos" Click="RemoveElementClick" ToolTip="Remove os elementos selecionados na lista (Ctrl/Shift+clique para vários)"/><Button Content="Atualizar prévia" Click="TemplatePreviewClick"/></WrapPanel>
+              <WrapPanel DockPanel.Dock="Bottom"><Button Content="Adicionar elemento" Click="AddElementClick"/><Button Content="Adicionar imagem ▾" Click="AddImageElementClick" ToolTip="Insere uma imagem no layout: do computador, da biblioteca, ou um espaço para a imagem do produto ou da família. Imagens ficam ao fundo (os textos aparecem por cima).">
+                  <Button.ContextMenu>
+                    <ContextMenu>
+                      <MenuItem Header="Inserir imagem do computador…" Click="InsertImageFromFileClick"/>
+                      <MenuItem Header="Escolher imagem da biblioteca…" Click="InsertImageFromLibraryClick"/>
+                      <Separator/>
+                      <MenuItem Header="Espaço para a imagem do produto" Click="InsertProductImageSlotClick"/>
+                      <MenuItem Header="Espaço para a imagem da família" Click="InsertFamilyImageSlotClick"/>
+                      <MenuItem Header="Espaço para a imagem do produto (ou da família, se não houver)" Click="InsertProductOrFamilySlotClick"/>
+                    </ContextMenu>
+                  </Button.ContextMenu>
+                </Button><Button Style="{StaticResource DangerButton}" Content="Remover elementos" Click="RemoveElementClick" ToolTip="Remove os elementos selecionados na lista (Ctrl/Shift+clique para vários)"/><Button Content="Atualizar prévia" Click="TemplatePreviewClick"/></WrapPanel>
               <DataGrid x:Name="ElementsGrid" CanUserDeleteRows="False">
                 <DataGrid.Columns>
                   <DataGridTextColumn Header="Texto / campo" Binding="{Binding Text, UpdateSourceTrigger=PropertyChanged}" Width="170"/>
@@ -239,10 +251,11 @@
           <StackPanel DockPanel.Dock="Top">
             <WrapPanel>
               <Button Content="Adicionar imagens…" Click="AddImageClick"/>
-              <Button Content="Importar pasta (nome do arquivo = código do produto)" Click="ImportImageFolderClick"/>
+              <Button Content="Importar pasta (nome = código do produto)" Click="ImportImageFolderClick" ToolTip="Ex.: 10486.jpg é vinculada ao produto 10486"/>
+              <Button Content="Importar pasta (nome = código da família)" Click="ImportFamilyImageFolderClick" ToolTip="Ex.: 1124.jpg é vinculada à família 1124"/>
               <Button Style="{StaticResource DangerButton}" Content="Excluir selecionadas" Click="DeleteImageClick" ToolTip="Selecione uma ou mais imagens (Ctrl/Shift+clique). Atalho: Delete"/>
             </WrapPanel>
-            <TextBlock TextWrapping="Wrap" Foreground="#526172" Margin="4,10" Text="Logos e fotos ficam guardados no banco de dados (reduzidas para até 1000 px). Para usar um logo, adicione-o aqui e, na aba Layouts salvos, use Adicionar imagem e escolha-o em Qual imagem. Para foto de produto, use Imagem do produto na aba 1 ou importe uma pasta com arquivos nomeados pelo código (ex.: 10486.jpg); no layout, deixe Qual imagem em (imagem do produto). Dê dois cliques no nome para renomear."/>
+            <TextBlock TextWrapping="Wrap" Foreground="#526172" Margin="4,10" Text="Cada imagem pode estar ligada ao produto, à família ou ao layout. Logos e fotos ficam guardados no banco de dados (reduzidas para até 1000 px). No layout (aba 2), use Adicionar imagem para inserir uma imagem do computador ou da biblioteca (fixa, como um logo), ou um espaço para a imagem do produto ou da família. Imagem do produto: botão Imagem do produto na aba 1, ou importe uma pasta com arquivos nomeados pelo código (ex.: 10486.jpg). Imagem da família: botão Imagem da família na aba 1, ou importe uma pasta nomeada pelo código da família. Dê dois cliques no nome para renomear."/>
           </StackPanel>
           <DataGrid x:Name="ImagesGrid" AutoGenerateColumns="False" SelectionMode="Extended" RowHeight="56" CellEditEnding="ImagesCellEditEnding" PreviewKeyDown="ImagesGridKeyDown">
             <DataGrid.Columns>
@@ -254,6 +267,7 @@
               <DataGridTextColumn Header="Nome" Binding="{Binding Name}" Width="*"/>
               <DataGridTextColumn Header="Tamanho" Binding="{Binding Size}" Width="90" IsReadOnly="True"/>
               <DataGridTextColumn Header="Produtos" Binding="{Binding Products}" Width="90" IsReadOnly="True"/>
+              <DataGridTextColumn Header="Famílias" Binding="{Binding Families}" Width="90" IsReadOnly="True"/>
               <DataGridTextColumn Header="Layouts" Binding="{Binding Layouts}" Width="90" IsReadOnly="True"/>
             </DataGrid.Columns>
           </DataGrid>

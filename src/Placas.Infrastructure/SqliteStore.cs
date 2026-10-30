@@ -26,6 +26,7 @@ public sealed class SqliteStore : IStore
             CREATE TABLE IF NOT EXISTS families(key TEXT PRIMARY KEY, code TEXT NOT NULL, description TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS images(id TEXT PRIMARY KEY, name TEXT NOT NULL, hash TEXT NOT NULL UNIQUE, data BLOB NOT NULL, thumb BLOB NOT NULL, created TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS product_images(code TEXT PRIMARY KEY, image_id TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS family_images(key TEXT PRIMARY KEY, image_id TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS templates(id TEXT PRIMARY KEY, json TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS history(id TEXT PRIMARY KEY, created TEXT NOT NULL, status TEXT NOT NULL, detail TEXT NOT NULL, json TEXT NOT NULL);
             PRAGMA user_version=1;
@@ -49,7 +50,6 @@ public sealed class SqliteStore : IStore
         insert.Parameters.AddWithValue("$date", DateTimeOffset.Now.ToString("O"));
         if (insert.ExecuteNonQuery() == 0)
         {
-            // Arquivo já importado: só atualiza as descrições de família lidas dele, sem duplicar itens.
             foreach (var family in batch.Families ?? []) UpsertFamily(db, transaction, family);
             foreach (var known in batch.Items.Where(x => !string.IsNullOrWhiteSpace(x.GroupDescription)))
                 UpdateGroupDescription(db, transaction, known.Id, known.GroupDescription!);
@@ -66,7 +66,6 @@ public sealed class SqliteStore : IStore
         command.Prepare();
         foreach (var item in batch.Items)
         {
-            // A família vem do catálogo, quando o relatório de oferta/promoção não a informa.
             var imported = item;
             if (item.Source != SourceKind.Catalog && string.IsNullOrWhiteSpace(item.Family))
             {
@@ -76,7 +75,6 @@ public sealed class SqliteStore : IStore
                 if (familyQuery.ExecuteScalar() is string catalogJson)
                     imported = item with { Family = JsonSerializer.Deserialize<PriceItem>(catalogJson)?.Family };
             }
-            // Preserva a subdescrição cadastrada manualmente quando o arquivo importado não a informa.
             if (string.IsNullOrWhiteSpace(imported.SubDescription))
             {
                 using var subQuery = db.CreateCommand(); subQuery.Transaction = transaction;
@@ -87,7 +85,7 @@ public sealed class SqliteStore : IStore
                     imported = imported with { SubDescription = keptSub };
             }
             id.Value = imported.Id; code.Value = imported.Code; search.Value = SearchKey(imported.Description);
-            source.Value = (int)imported.Source; json.Value = JsonSerializer.Serialize(imported with { FamilyDescription = null, ImageId = null });
+            source.Value = (int)imported.Source; json.Value = JsonSerializer.Serialize(imported with { FamilyDescription = null, ImageId = null, FamilyImageId = null });
             command.ExecuteNonQuery();
         }
         using var link = db.CreateCommand(); link.Transaction = transaction;
@@ -97,7 +95,6 @@ public sealed class SqliteStore : IStore
         foreach (var item in batch.Items) { linkedId.Value = item.Id; link.ExecuteNonQuery(); }
         foreach (var family in batch.Families ?? [])
             UpsertFamily(db, transaction, family);
-        // Atualiza a família das condições existentes ao importar um catálogo posteriormente.
         if (batch.Items.Any(x => x.Source == SourceKind.Catalog && !string.IsNullOrWhiteSpace(x.Family)))
         {
             using var select = db.CreateCommand(); select.Transaction = transaction;
@@ -132,7 +129,7 @@ public sealed class SqliteStore : IStore
             item.Start > item.End || (item.Source == SourceKind.Promotion && item.Quantity != decimal.Truncate(item.Quantity)))
             throw new InvalidOperationException("Preço, quantidade ou período inválidos.");
         // A descrição da família vive na tabela "families"; não é gravada junto do item.
-        var normalized = item with { Code = ProductCode.Normalize(item.DisplayCode), FamilyDescription = null, ImageId = null };
+        var normalized = item with { Code = ProductCode.Normalize(item.DisplayCode), FamilyDescription = null, ImageId = null, FamilyImageId = null };
         using var db = Open(); using var command = db.CreateCommand();
         command.CommandText = """
             INSERT INTO items(id,code,search,source,json) VALUES($id,$code,$search,$source,$json)
@@ -162,7 +159,6 @@ public sealed class SqliteStore : IStore
         return command.ExecuteScalar() as string;
     }
 
-    // Imagem idêntica (mesmo hash do arquivo original) não é duplicada: devolve a já existente.
     public string AddImage(string name, string hash, byte[] data, byte[] thumbnail)
     {
         if (data.Length == 0 || thumbnail.Length == 0) throw new InvalidOperationException("Imagem vazia.");
@@ -186,15 +182,15 @@ public sealed class SqliteStore : IStore
     {
         var layoutUse = new Dictionary<string, int>();
         foreach (var template in Templates())
-            foreach (var id in template.Elements.Where(x => x.IsImage && !string.IsNullOrWhiteSpace(x.ImageId)).Select(x => x.ImageId).Distinct())
+            foreach (var id in template.Elements.Where(x => x.IsImage && !ImageSources.IsDynamic(x.ImageId)).Select(x => x.ImageId).Distinct())
                 layoutUse[id] = layoutUse.GetValueOrDefault(id) + 1;
         using var db = Open(); using var command = db.CreateCommand();
-        command.CommandText = "SELECT i.id, i.name, length(i.data), i.thumb, (SELECT COUNT(*) FROM product_images p WHERE p.image_id=i.id) FROM images i ORDER BY i.name COLLATE NOCASE, i.rowid";
+        command.CommandText = "SELECT i.id, i.name, length(i.data), i.thumb, (SELECT COUNT(*) FROM product_images p WHERE p.image_id=i.id), (SELECT COUNT(*) FROM family_images f WHERE f.image_id=i.id) FROM images i ORDER BY i.name COLLATE NOCASE, i.rowid";
         var result = new List<ImageInfo>();
         using var reader = command.ExecuteReader();
         while (reader.Read())
             result.Add(new ImageInfo(reader.GetString(0), reader.GetString(1), reader.GetInt32(2),
-                reader.GetFieldValue<byte[]>(3), reader.GetInt32(4), layoutUse.GetValueOrDefault(reader.GetString(0))));
+                reader.GetFieldValue<byte[]>(3), reader.GetInt32(4), layoutUse.GetValueOrDefault(reader.GetString(0)), reader.GetInt32(5)));
         return result;
     }
 
@@ -214,7 +210,6 @@ public sealed class SqliteStore : IStore
         command.ExecuteNonQuery();
     }
 
-    // Recusa excluir imagem usada em layout; remove os vínculos com produtos e devolve quantos eram.
     public int DeleteImage(string id)
     {
         var layouts = Templates().Where(t => t.Elements.Any(e => e.IsImage && e.ImageId == id)).Select(t => t.Name).ToList();
@@ -224,12 +219,14 @@ public sealed class SqliteStore : IStore
         using var links = db.CreateCommand(); links.Transaction = tx;
         links.CommandText = "DELETE FROM product_images WHERE image_id=$id"; links.Parameters.AddWithValue("$id", id);
         var removed = links.ExecuteNonQuery();
+        using var familyLinks = db.CreateCommand(); familyLinks.Transaction = tx;
+        familyLinks.CommandText = "DELETE FROM family_images WHERE image_id=$id"; familyLinks.Parameters.AddWithValue("$id", id);
+        removed += familyLinks.ExecuteNonQuery();
         using var image = db.CreateCommand(); image.Transaction = tx;
         image.CommandText = "DELETE FROM images WHERE id=$id"; image.Parameters.AddWithValue("$id", id);
         image.ExecuteNonQuery(); tx.Commit(); return removed;
     }
 
-    // A imagem pertence ao produto (código), não a uma condição: vale para catálogo, oferta e promoção.
     public void SetProductImage(string code, string? imageId)
     {
         var key = ProductCode.Normalize(code);
@@ -251,6 +248,37 @@ public sealed class SqliteStore : IStore
         command.ExecuteNonQuery(); tx.Commit();
     }
 
+    private static Dictionary<string, string> LoadFamilyImages(SqliteConnection db)
+    {
+        using var command = db.CreateCommand(); command.CommandText = "SELECT key,image_id FROM family_images";
+        var result = new Dictionary<string, string>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read()) result[reader.GetString(0)] = reader.GetString(1);
+        return result;
+    }
+
+    public void SetFamilyImage(string familyCode, string? imageId)
+    {
+        if (string.IsNullOrWhiteSpace(familyCode)) throw new InvalidOperationException("Informe o código da família.");
+        var key = FamilyCode.Key(familyCode);
+        using var db = Open(); using var tx = db.BeginTransaction();
+        using var command = db.CreateCommand(); command.Transaction = tx;
+        if (string.IsNullOrWhiteSpace(imageId))
+        {
+            command.CommandText = "DELETE FROM family_images WHERE key=$key";
+            command.Parameters.AddWithValue("$key", key);
+        }
+        else
+        {
+            using var exists = db.CreateCommand(); exists.Transaction = tx;
+            exists.CommandText = "SELECT 1 FROM images WHERE id=$id"; exists.Parameters.AddWithValue("$id", imageId);
+            if (exists.ExecuteScalar() is null) throw new InvalidOperationException("Imagem não encontrada na biblioteca.");
+            command.CommandText = "INSERT INTO family_images(key,image_id) VALUES($key,$image) ON CONFLICT(key) DO UPDATE SET image_id=$image";
+            command.Parameters.AddWithValue("$key", key); command.Parameters.AddWithValue("$image", imageId);
+        }
+        command.ExecuteNonQuery(); tx.Commit();
+    }
+
     public void SaveFamily(FamilyInfo family)
     {
         if (string.IsNullOrWhiteSpace(family.Code) || string.IsNullOrWhiteSpace(family.Description))
@@ -260,7 +288,6 @@ public sealed class SqliteStore : IStore
         tx.Commit();
     }
 
-    // Itens importados antes de a descrição do grupo ser lida ganham o valor ao reler o mesmo arquivo.
     private static void UpdateGroupDescription(SqliteConnection db, SqliteTransaction tx, string id, string description)
     {
         using var read = db.CreateCommand(); read.Transaction = tx;
@@ -271,7 +298,7 @@ public sealed class SqliteStore : IStore
         using var write = db.CreateCommand(); write.Transaction = tx;
         write.CommandText = "UPDATE items SET json=$json WHERE id=$id";
         write.Parameters.AddWithValue("$id", id);
-        write.Parameters.AddWithValue("$json", JsonSerializer.Serialize(item with { GroupDescription = description, FamilyDescription = null, ImageId = null }));
+        write.Parameters.AddWithValue("$json", JsonSerializer.Serialize(item with { GroupDescription = description, FamilyDescription = null, ImageId = null, FamilyImageId = null }));
         write.ExecuteNonQuery();
     }
 
@@ -296,7 +323,6 @@ public sealed class SqliteStore : IStore
 
     public void DeleteItem(string id) => DeleteItems([id]);
 
-    // Exclui vários itens numa única transação (tudo ou nada) e remove importações que ficaram sem itens.
     public int DeleteItems(IReadOnlyCollection<string> ids)
     {
         if (ids.Count == 0) return 0;
@@ -326,8 +352,6 @@ public sealed class SqliteStore : IStore
         return result;
     }
 
-    // Uma importação que perdeu todos os itens não tem mais o que gerenciar: remove o registro,
-    // o que também permite importar o mesmo arquivo novamente.
     private static void RemoveEmptyImports(SqliteConnection db, SqliteTransaction tx, IEnumerable<string> hashes)
     {
         foreach (var hash in hashes.Distinct())
@@ -361,7 +385,6 @@ public sealed class SqliteStore : IStore
         count.Parameters.AddWithValue("$hash", hash);
         if (Convert.ToInt32(count.ExecuteScalar()) == 0)
         {
-            // Sem itens associados (já removidos ou anterior ao rastreamento): só o registro é apagado.
             using var registry = db.CreateCommand(); registry.Transaction = tx;
             registry.CommandText = "DELETE FROM imports WHERE hash=$hash";
             registry.Parameters.AddWithValue("$hash", hash); registry.ExecuteNonQuery();
@@ -409,7 +432,6 @@ public sealed class SqliteStore : IStore
         using var orphan = db.CreateCommand(); orphan.Transaction = tx;
         orphan.CommandText = "DELETE FROM import_items WHERE item_id NOT IN (SELECT id FROM items)";
         orphan.ExecuteNonQuery();
-        // Arquivos de oferta/promoção cujos itens venceram todos saem da lista de importações.
         RemoveEmptyImports(db, tx, affected);
         tx.Commit(); return removed;
     }
@@ -426,14 +448,18 @@ public sealed class SqliteStore : IStore
         command.Parameters.AddWithValue("$limit", Math.Clamp(limit, 1, 10000));
         var families = LoadFamilies(db);
         var productImages = LoadProductImages(db);
+        var familyImages = LoadFamilyImages(db);
         using var reader = command.ExecuteReader(); var result = new List<PriceItem>();
         while (reader.Read())
         {
             var item = JsonSerializer.Deserialize<PriceItem>(reader.GetString(0))!;
-            // Descrição da família e imagem do produto vivem em tabelas próprias e são resolvidas aqui.
             item = item with { ImageId = productImages.GetValueOrDefault(item.Code) };
-            result.Add(string.IsNullOrWhiteSpace(item.Family) ? item
-                : item with { FamilyDescription = families.GetValueOrDefault(FamilyCode.Key(item.Family)) });
+            if (!string.IsNullOrWhiteSpace(item.Family))
+            {
+                var familyKey = FamilyCode.Key(item.Family);
+                item = item with { FamilyDescription = families.GetValueOrDefault(familyKey), FamilyImageId = familyImages.GetValueOrDefault(familyKey) };
+            }
+            result.Add(item);
         }
         return result;
     }

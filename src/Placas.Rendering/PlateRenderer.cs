@@ -14,7 +14,6 @@ public sealed class PlateRenderer
 {
     public static double Dip(double mm) => mm * 96 / 25.4;
     private static Brush Brush(string color) => (Brush)new BrushConverter().ConvertFromString(color)!;
-    // Fornece os bytes de uma imagem da biblioteca pelo id (ligado ao banco pela janela principal).
     public Func<string, byte[]?>? ImageLoader { get; set; }
     private readonly Dictionary<string, BitmapSource> imageCache = [];
     public void ClearImageCache() => imageCache.Clear();
@@ -28,7 +27,7 @@ public sealed class PlateRenderer
         var image = new BitmapImage();
         image.BeginInit();
         image.CacheOption = BitmapCacheOption.OnLoad;
-        image.DecodePixelWidth = decodeWidth; // evita manter fotos grandes na memória durante o lote
+        image.DecodePixelWidth = decodeWidth; 
         image.StreamSource = new MemoryStream(bytes);
         image.EndInit();
         image.Freeze();
@@ -38,8 +37,15 @@ public sealed class PlateRenderer
 
     private Border? ImageElement(PlateElement element, PriceItem item, bool placeholders)
     {
-        var fixedImage = !string.IsNullOrWhiteSpace(element.ImageId);
-        var id = fixedImage ? element.ImageId : item.ImageId;
+        var source = element.ImageId;
+        var fixedImage = !ImageSources.IsDynamic(source);
+        var id = source switch
+        {
+            ImageSources.Family => item.FamilyImageId,
+            ImageSources.ProductOrFamily => string.IsNullOrWhiteSpace(item.ImageId) ? item.FamilyImageId : item.ImageId,
+            _ when fixedImage => source,
+            _ => item.ImageId
+        };
         var decodeWidth = Math.Clamp((int)Math.Ceiling(element.Width / 25.4 * 300), 64, ImageTools.MaxSide);
         var bitmap = string.IsNullOrWhiteSpace(id) ? null : LoadImage(id, decodeWidth);
         if (fixedImage && bitmap is null && !placeholders)
@@ -54,11 +60,16 @@ public sealed class PlateRenderer
         else if (placeholders)
             content = new TextBlock
             {
-                Text = fixedImage ? "Imagem não encontrada" : "Imagem do produto", Foreground = Brushes.Gray,
+                Text = fixedImage ? "Imagem não encontrada" : source switch
+                {
+                    ImageSources.Family => "Imagem da família",
+                    ImageSources.ProductOrFamily => "Imagem do produto ou da família",
+                    _ => "Imagem do produto"
+                },
+                Foreground = Brushes.Gray,
                 FontStyle = FontStyles.Italic, FontSize = 11, TextAlignment = TextAlignment.Center,
                 TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center
             };
-        // Produto sem imagem: o elemento simplesmente não é desenhado.
         if (content is null) return null;
         var box = new Border
         {
@@ -73,7 +84,6 @@ public sealed class PlateRenderer
     {
         PlateRules.ValidateTemplate(template);
         var canvas = new Canvas { Width = Dip(template.WidthMm), Height = Dip(template.HeightMm), Background = Brush(template.Background), ClipToBounds = true };
-        // Imagens sempre ao fundo (a ordem entre elas é mantida); textos e demais elementos ficam por cima.
         foreach (var element in template.Elements.OrderByDescending(x => x.IsImage))
         {
             if (element.IsImage)
@@ -84,7 +94,6 @@ public sealed class PlateRenderer
                 continue;
             }
             var resolved = PlateRules.Resolve(element.Text, item);
-            // Campo opcional sem valor (ex.: {subdescricao} vazia): não desenha o elemento, nem o fundo dele.
             if (string.IsNullOrWhiteSpace(resolved) && element.Text.Contains('{')) continue;
             var text = new TextBlock
             {
@@ -133,13 +142,11 @@ public sealed class PlateRenderer
                 FixedPage.SetLeft(plate, x); FixedPage.SetTop(plate, y); page.Children.Add(plate);
                 if (cutMarks)
                 {
-                    // Dashed cutting outline stays inside the requested printable margins.
                     var outline = new Rectangle { Width = plate.Width, Height = plate.Height,
                         Stroke = Brushes.Gray, StrokeThickness = .5, StrokeDashArray = [3, 3], IsHitTestVisible = false };
                     FixedPage.SetLeft(outline, x); FixedPage.SetTop(outline, y); page.Children.Add(outline);
                 }
             }
-            // Explicitly attach the visual page to PageContent for reliable WPF pagination.
             var content = new PageContent { Child = page };
             document.Pages.Add(content);
         }

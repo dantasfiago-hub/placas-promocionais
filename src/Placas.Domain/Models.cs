@@ -16,7 +16,6 @@ public static class ProductCode
 
 public static class FamilyCode
 {
-    // Chave de comparação: "012" e "12" são a mesma família; códigos com letras ignoram caixa.
     public static string Key(string raw)
     {
         var value = raw.Trim();
@@ -28,8 +27,15 @@ public static class FamilyCode
 
 public sealed record FamilyInfo(string Code, string Description);
 
-// Imagem da biblioteca (logo, foto de produto...). Thumbnail é uma miniatura pequena para listas.
-public sealed record ImageInfo(string Id, string Name, int Bytes, byte[] Thumbnail, int ProductCount, int LayoutCount);
+public static class ImageSources
+{
+    public const string Product = "";                       
+    public const string Family = "@familia";                
+    public const string ProductOrFamily = "@produto-familia"; 
+    public static bool IsDynamic(string? source) => string.IsNullOrWhiteSpace(source) || source.StartsWith('@');
+}
+
+public sealed record ImageInfo(string Id, string Name, int Bytes, byte[] Thumbnail, int ProductCount, int LayoutCount, int FamilyCount = 0);
 
 public enum SourceKind { Catalog, Offer, Promotion }
 public enum QuantityRule { Pending, UnitPrice, BundleTotal }
@@ -39,7 +45,7 @@ public sealed record PriceItem(
     SourceKind Source, string? GroupCode, decimal Quantity,
     QuantityRule Rule, string FileName, string Sheet, int Row, string? Family = null,
     string? SubDescription = null, string? FamilyDescription = null, string? GroupDescription = null,
-    string? ImageId = null);
+    string? ImageId = null, string? FamilyImageId = null);
 
 public sealed record ImportIssue(string Sheet, int Row, string Message);
 public sealed record ImportBatch(string Hash, string FileName, List<PriceItem> Items, List<ImportIssue> Issues,
@@ -62,7 +68,6 @@ public sealed class PlateElement
     public string Background { get; set; } = "#00FFFFFF";
     public bool Bold { get; set; } = true;
     public bool Italic { get; set; } = false;
-    // Elemento de imagem: ImageId vazio = imagem do produto; preenchido = imagem fixa da biblioteca (ex.: logo).
     public bool IsImage { get; set; } = false;
     public string ImageId { get; set; } = ""; 
 }

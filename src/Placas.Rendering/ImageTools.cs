@@ -9,7 +9,6 @@ public static class ImageTools
     public const int MaxSide = 1000;
     public const int ThumbnailSide = 96;
 
-    // Reduz a imagem e a regrava (PNG se houver transparência, JPEG se for opaca) para o banco não crescer demais.
     public static (byte[] Data, byte[] Thumbnail) Prepare(byte[] source)
     {
         var frame = Decode(source);

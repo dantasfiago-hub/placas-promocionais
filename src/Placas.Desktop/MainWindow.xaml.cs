@@ -29,7 +29,6 @@ public sealed class ProductRow(PriceItem item) : INotifyPropertyChanged
 
     public bool IsExpired => Item.End is { } end && end < DateOnly.FromDateTime(DateTime.Today);
     public bool IsFuture => Item.Start is { } start && start > DateOnly.FromDateTime(DateTime.Today);
-    // Nível usado para colorir a linha: expired, attention, zero, future ou ok.
     public string Level => IsExpired ? "expired"
         : Item.Rule == QuantityRule.Pending ? "attention"
         : Item.Price <= 0 ? "zero"
@@ -57,11 +56,10 @@ public sealed class ProductRow(PriceItem item) : INotifyPropertyChanged
         }
     }
     public bool HasImage => !string.IsNullOrWhiteSpace(Item.ImageId);
-    public string ImageMark => HasImage ? "✓" : "";
+    public string ImageMark => HasImage ? "Produto" : !string.IsNullOrWhiteSpace(Item.FamilyImageId) ? "Família" : "";
     public string FamilyLabel => string.IsNullOrWhiteSpace(Item.Family) ? ""
         : string.IsNullOrWhiteSpace(Item.FamilyDescription) ? Item.Family! : $"{Item.Family} - {Item.FamilyDescription}";
     public bool HasSub => !string.IsNullOrWhiteSpace(Item.SubDescription);
-    // Dados técnicos que saíram das colunas e aparecem ao passar o mouse sobre a linha.
     public string Details => string.Join("\n",
         $"Arquivo: {Item.FileName}",
         $"Aba: {Item.Sheet} • Linha: {Item.Row}",
@@ -79,7 +77,7 @@ public sealed class ImageRow(ImageInfo info)
     public string Size { get; } = info.Bytes >= 1_048_576 ? $"{info.Bytes / 1_048_576d:0.0} MB" : $"{info.Bytes / 1024d:0} KB";
     public int Products { get; } = info.ProductCount;
     public int Layouts { get; } = info.LayoutCount;
-    // Miniatura criada só quando a linha aparece, para listas grandes não travarem.
+    public int Families { get; } = info.FamilyCount;
     public System.Windows.Media.ImageSource? Thumbnail => thumbnail ??= MainWindow.ToBitmap(info.Thumbnail);
 }
 public sealed class ImportRow(ImportRecord record)
@@ -132,7 +130,6 @@ public partial class MainWindow : Window
         ElementsGrid.AddHandler(ToggleButton.UncheckedEvent, new RoutedEventHandler((_, _) => QueueEditorPreview()), true);
         SaleDate.SelectedDate = DateTime.Today;
         BatchGrid.ItemsSource = basket;
-        // Printing is only routed through our validated pipeline, including keyboard shortcuts.
         DocumentPreview.CommandBindings.Add(new CommandBinding(ApplicationCommands.Print, (_, e) => { PrintClick(this, e); e.Handled = true; }));
         renderer.ImageLoader = store.GetImage;
         RefreshTemplates(); RefreshProducts(); RefreshHistory(); RefreshImports(); RefreshImages();
@@ -352,7 +349,6 @@ public partial class MainWindow : Window
                     Rule = (QuantityRule)rules.SelectedItem!
                 };
                 store.SaveItem(revised);
-                // A descrição vale para todos os produtos da mesma família.
                 var familyDescription = Value("Descrição da família (opcional)");
                 if (revised.Family is { Length: > 0 } familyCode && familyDescription.Length > 0)
                     store.SaveFamily(new FamilyInfo(familyCode, familyDescription));
@@ -392,7 +388,6 @@ public partial class MainWindow : Window
     }
     private void ApplyProductFilters()
     {
-        // Os ComboBox disparam SelectionChanged durante o InitializeComponent, antes de tudo existir.
         if (ProductsGrid is null || StatusFilter is null || FamilyFilter is null) return;
         var family = FamilyFilter.SelectedIndex > 0 ? FamilyFilter.SelectedItem as string : null;
         IEnumerable<ProductRow> rows = allProducts;
@@ -413,7 +408,6 @@ public partial class MainWindow : Window
     }
     private void SearchClick(object sender, RoutedEventArgs e) => Run(RefreshProducts);
     private void SearchKeyDown(object sender, KeyEventArgs e) { if (e.Key == Key.Enter) Run(RefreshProducts); }
-    // ---- Seleção: "marcados" (caixas) têm prioridade; sem marcados, valem as linhas destacadas (Ctrl/Shift+clique).
     private IReadOnlyList<ProductRow> Targets()
     {
         var marked = products.Where(x => x.Selected).ToList();
@@ -434,7 +428,6 @@ public partial class MainWindow : Window
     private void ProductsSelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateSelectionInfo();
     private void UpdateSelectionInfo()
     {
-        // Eventos podem chegar durante o InitializeComponent, antes de os controles existirem.
         if (ProductsGrid is null || SelectionInfo is null || AddFamiliesButton is null) return;
         var marked = products.Count(x => x.Selected);
         var highlighted = ProductsGrid.SelectedItems.Count;
@@ -444,6 +437,7 @@ public partial class MainWindow : Window
             : "Nenhum item selecionado: marque as caixas ou destaque linhas.";
         EditProductButton.IsEnabled = count == 1;
         ProductImageButton.IsEnabled = count == 1;
+        FamilyImageButton.IsEnabled = Targets().Any(x => !string.IsNullOrWhiteSpace(x.Item.Family));
         DeleteProductButton.IsEnabled = count > 0;
         AddToBatchButton.IsEnabled = count > 0;
         AddFamiliesButton.IsEnabled = count > 0;
@@ -481,7 +475,6 @@ public partial class MainWindow : Window
         if (existing is null) basket.Add(new(item, copies));
         else { existing.Item = item; existing.Copies = copies; }
     }
-    // Lista o que ficou de fora de uma ação em lote, sem desfazer o que deu certo.
     private void ShowSkipped(string title, string intro, IReadOnlyCollection<string> lines)
     {
         var nl = Environment.NewLine;
@@ -512,7 +505,7 @@ public partial class MainWindow : Window
             accepted.Add(row);
         }
         foreach (var row in accepted) UpsertBatch(row.Item, copies);
-        SetMarked(accepted, false); // só desmarca o que entrou; o restante continua marcado para você corrigir
+        SetMarked(accepted, false); 
         BatchGrid.Items.Refresh(); InvalidatePreview();
         Status.Text = $"{accepted.Count} produto(s) adicionado(s); {basket.Count} no lote. Escolha o layout na aba Lote e impressão.";
         if (skipped.Count > 0)
@@ -547,7 +540,7 @@ public partial class MainWindow : Window
             }
         }
         foreach (var plate in plates) UpsertBatch(plate, copies);
-        SetMarked(used, false); // o que ficou de fora continua marcado
+        SetMarked(used, false); 
         BatchGrid.Items.Refresh(); InvalidatePreview();
         Status.Text = $"{plates.Count} placa(s) de família/grupo adicionada(s); {basket.Count} no lote. Escolha o layout na aba Lote e impressão.";
         if (skipped.Count > 0)
@@ -624,7 +617,6 @@ public partial class MainWindow : Window
     private void RenderEditorPreviewSafely()
     {
         if (editing is null) return;
-        // Never take keyboard focus away while the user types.
         if (HasValidationError(TemplateFields) || HasValidationError(ElementsGrid))
         {
             PreviewStatus.Text = "Revise os valores inválidos para atualizar a prévia.";
@@ -691,13 +683,54 @@ public partial class MainWindow : Window
         foreach (var element in elements) editing.Elements.Remove(element);
         ElementsGrid.Items.Refresh(); QueueEditorPreview();
     }
-    private void AddImageElementClick(object sender, RoutedEventArgs e) => Run(() =>
+    private void AddImageElementClick(object sender, RoutedEventArgs e)
     {
-        if (editing is null) return;
-        var size = Math.Min(30, Math.Min(editing.WidthMm, editing.HeightMm));
-        editing.Elements.Add(new() { IsImage = true, Text = "", X = 0, Y = 0, Width = size, Height = size, Background = "#00FFFFFF" });
-        ElementsGrid.Items.Refresh(); QueueEditorPreview();
+        if (sender is not Button button || button.ContextMenu is null) return;
+        button.ContextMenu.PlacementTarget = button;
+        button.ContextMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+        button.ContextMenu.IsOpen = true;
+    }
+    private void RequireEditingTemplate()
+    {
+        if (editing is null) throw new InvalidOperationException("Abra ou crie um layout antes de inserir uma imagem.");
+    }
+    private static double AspectOf(byte[]? bytes)
+        => ToBitmap(bytes) is { PixelHeight: > 0 } bitmap ? (double)bitmap.PixelWidth / bitmap.PixelHeight : 1;
+    private void AddImageElement(string imageId, double aspect = 1)
+    {
+        RequireEditingTemplate();
+        var box = Math.Min(40, Math.Min(editing!.WidthMm, editing.HeightMm));
+        var width = aspect >= 1 ? box : box * aspect;
+        var height = aspect >= 1 ? box / aspect : box;
+        var element = new PlateElement
+        {
+            IsImage = true, Text = "", ImageId = imageId, X = 5, Y = 5, Background = "#00FFFFFF",
+            Width = Math.Max(1, Math.Round(width, 1)), Height = Math.Max(1, Math.Round(height, 1))
+        };
+        editing.Elements.Add(element);
+        ElementsGrid.Items.Refresh(); ElementsGrid.SelectedItem = element; ElementsGrid.ScrollIntoView(element);
+        QueueEditorPreview();
+        Status.Text = "Imagem inserida no layout. Ajuste X, Y, Larg. e Alt. na lista; ela fica ao fundo e os textos aparecem por cima.";
+    }
+    private void InsertImageFromFileClick(object sender, RoutedEventArgs e) => Run(() =>
+    {
+        RequireEditingTemplate();
+        var dialog = new OpenFileDialog { Filter = ImageFilter, Title = "Inserir imagem no layout" };
+        if (dialog.ShowDialog(this) != true) return;
+        var id = AddImageFile(dialog.FileName); 
+        renderer.ClearImageCache(); RefreshImages();
+        AddImageElement(id, AspectOf(store.GetImage(id)));
     });
+    private void InsertImageFromLibraryClick(object sender, RoutedEventArgs e) => Run(() =>
+    {
+        RequireEditingTemplate();
+        var (ok, id) = PickImageDialog("Escolher imagem para o layout", null);
+        if (!ok || id is null) return;
+        AddImageElement(id, AspectOf(store.GetImage(id)));
+    });
+    private void InsertProductImageSlotClick(object sender, RoutedEventArgs e) => Run(() => AddImageElement(ImageSources.Product));
+    private void InsertFamilyImageSlotClick(object sender, RoutedEventArgs e) => Run(() => AddImageElement(ImageSources.Family));
+    private void InsertProductOrFamilySlotClick(object sender, RoutedEventArgs e) => Run(() => AddImageElement(ImageSources.ProductOrFamily));
     private void TemplatePreviewClick(object sender, RoutedEventArgs e) => Run(UpdateTemplatePreview);
 
     internal static System.Windows.Media.Imaging.BitmapImage? ToBitmap(byte[]? bytes, int decodeWidth = 0)
@@ -721,16 +754,18 @@ public partial class MainWindow : Window
     private void RefreshImageChoices() => SetImageChoices(store.Images());
     private void SetImageChoices(List<ImageInfo> infos)
     {
-        imageChoices = [new("", "(imagem do produto)"), .. infos.Select(x => new ImageChoice(x.Id, x.Name))];
+        imageChoices = [
+            new(ImageSources.Product, "(imagem do produto)"),
+            new(ImageSources.Family, "(imagem da família)"),
+            new(ImageSources.ProductOrFamily, "(do produto; se não houver, da família)"),
+            .. infos.Select(x => new ImageChoice(x.Id, x.Name))];
         ImageColumn.ItemsSource = imageChoices;
     }
-    // Depois de qualquer mudança na biblioteca: limpa o cache, atualiza listas, produtos e prévias.
     private void NotifyImagesChanged()
     {
         renderer.ClearImageCache(); RefreshImages(); RefreshProducts(); InvalidatePreview(); QueueEditorPreview();
     }
 
-    // Lê o arquivo, reduz e grava na biblioteca. Arquivo idêntico a um já existente reaproveita o registro.
     private string AddImageFile(string path, string? name = null)
     {
         var info = new FileInfo(path);
@@ -769,9 +804,12 @@ public partial class MainWindow : Window
             MessageBox.Show(this, string.Join(Environment.NewLine, problems.Take(8)), "Algumas imagens não foram adicionadas", MessageBoxButton.OK, MessageBoxImage.Warning);
     });
 
-    private void ImportImageFolderClick(object sender, RoutedEventArgs e) => Run(() =>
+    private void ImportImageFolderClick(object sender, RoutedEventArgs e) => Run(() => ImportImageFolder(false));
+    private void ImportFamilyImageFolderClick(object sender, RoutedEventArgs e) => Run(() => ImportImageFolder(true));
+    private void ImportImageFolder(bool forFamilies)
     {
-        var dialog = new OpenFolderDialog { Title = "Pasta com imagens nomeadas pelo código do produto (ex.: 10486.jpg)" };
+        var target = forFamilies ? "família" : "produto";
+        var dialog = new OpenFolderDialog { Title = $"Pasta com imagens nomeadas pelo código da {target} (ex.: 10486.jpg)" };
         if (dialog.ShowDialog(this) != true) return;
         var files = Directory.EnumerateFiles(dialog.FolderName)
             .Where(f => ImageExtensions.Contains(Path.GetExtension(f).ToLowerInvariant())).ToList();
@@ -784,26 +822,33 @@ public partial class MainWindow : Window
             {
                 var code = Path.GetFileNameWithoutExtension(file).Trim();
                 if (code.Length == 0 || !code.All(char.IsAsciiDigit)) { skipped++; continue; }
-                try { store.SetProductImage(ProductCode.Normalize(code), AddImageFile(file)); linked++; }
+                try
+                {
+                    var imageId = AddImageFile(file);
+                    if (forFamilies) store.SetFamilyImage(code, imageId);
+                    else store.SetProductImage(ProductCode.Normalize(code), imageId);
+                    linked++;
+                }
                 catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException) { problems.Add(ex.Message); }
             }
         }
         finally { Mouse.OverrideCursor = null; }
         NotifyImagesChanged();
-        var text = $"{linked} imagem(ns) vinculada(s) a produtos pelo código.";
-        if (skipped > 0) text += $"{Environment.NewLine}{skipped} arquivo(s) ignorado(s): o nome não é apenas o código do produto.";
+        var summary = $"{linked} imagem(ns) vinculada(s) a {(forFamilies ? "famílias" : "produtos")} pelo código.";
+        var text = summary;
+        if (skipped > 0) text += $"{Environment.NewLine}{skipped} arquivo(s) ignorado(s): o nome não é apenas o código da {target}.";
         if (problems.Count > 0) text += $"{Environment.NewLine}{problems.Count} com problema:{Environment.NewLine}" + string.Join(Environment.NewLine, problems.Take(8));
-        Status.Text = $"{linked} imagem(ns) vinculada(s) a produtos pelo código.";
+        Status.Text = summary;
         MessageBox.Show(this, text, "Importar imagens da pasta", MessageBoxButton.OK, MessageBoxImage.Information);
-    });
+    }
 
     private void DeleteImageClick(object sender, RoutedEventArgs e) => Run(() =>
     {
         var rows = ImagesGrid.SelectedItems.OfType<ImageRow>().ToList();
         if (rows.Count == 0) throw new InvalidOperationException("Selecione uma ou mais imagens (Ctrl/Shift+clique).");
         var question = rows.Count == 1 ? $"Excluir a imagem '{rows[0].Name}'?" : $"Excluir {rows.Count} imagens?";
-        var linked = rows.Sum(x => x.Products);
-        if (linked > 0) question += $"{Environment.NewLine}{Environment.NewLine}{linked} vínculo(s) com produtos será(ão) removido(s).";
+        var linked = rows.Sum(x => x.Products + x.Families);
+        if (linked > 0) question += $"{Environment.NewLine}{Environment.NewLine}{linked} vínculo(s) com produtos ou famílias será(ão) removido(s).";
         if (MessageBox.Show(this, question, "Excluir imagem", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
         var deleted = 0; var failed = new List<string>();
         foreach (var row in rows)
@@ -845,6 +890,25 @@ public partial class MainWindow : Window
         Status.Text = imageId is null
             ? "Imagem do produto removida."
             : "Imagem vinculada ao produto (vale para catálogo, ofertas e promoções dele).";
+    });
+
+    private void FamilyImageClick(object sender, RoutedEventArgs e) => Run(() =>
+    {
+        var targets = Targets();
+        var families = targets.Where(x => !string.IsNullOrWhiteSpace(x.Item.Family))
+            .GroupBy(x => FamilyCode.Key(x.Item.Family!)).ToList();
+        if (families.Count == 0) throw new InvalidOperationException("Os itens selecionados não têm família.");
+        var first = families[0].First();
+        var title = families.Count == 1 ? $"Imagem da família {first.FamilyLabel}" : $"Imagem de {families.Count} famílias";
+        var (ok, imageId) = PickImageDialog(title, families.Count == 1 ? first.Item.FamilyImageId : null);
+        if (!ok) return;
+        foreach (var family in families) store.SetFamilyImage(family.First().Item.Family!, imageId);
+        var marked = allProducts.Where(x => x.Selected).Select(x => x.Item.Id).ToHashSet();
+        NotifyImagesChanged();
+        SetMarked(allProducts.Where(x => marked.Contains(x.Item.Id)), true);
+        var withoutFamily = targets.Count - families.Sum(g => g.Count());
+        Status.Text = (imageId is null ? "Imagem removida de " : "Imagem vinculada a ") + $"{families.Count} família(s)"
+            + (withoutFamily > 0 ? $"; {withoutFamily} item(ns) sem família foram ignorados." : ".");
     });
 
     private (bool Ok, string? ImageId) PickImageDialog(string title, string? currentId)
@@ -923,7 +987,6 @@ public partial class MainWindow : Window
     });
     private void PrintClick(object sender, RoutedEventArgs e) => Run(() =>
     {
-        // Rebuild from current controls: never send an outdated preview after changing copies/template/date.
         var batch = BuildBatch(); var paper = Paper();
         var dialog = new PrintDialog();
         dialog.PrintTicket.PageMediaSize = new PageMediaSize(PlateRenderer.Dip(paper.Width), PlateRenderer.Dip(paper.Height));
@@ -937,7 +1000,6 @@ public partial class MainWindow : Window
         var height = (chosen?.Height ?? PlateRenderer.Dip(paper.Height));
         if (dialog.PrintTicket.PageOrientation is PageOrientation.Landscape or PageOrientation.ReverseLandscape)
             (width, height) = (height, width);
-        // Cada margem respeita a área não imprimível da impressora naquele lado, sem afetar os outros.
         static double Mm(double dip) => Math.Max(0, dip) * 25.4 / 96;
         var margins = new PageMargins(
             Math.Max(paper.Margins.Top, area is null ? 0 : Mm(area.OriginHeight)),
@@ -945,11 +1007,8 @@ public partial class MainWindow : Window
             Math.Max(paper.Margins.Bottom, area is null ? 0 : Mm(height - area.OriginHeight - area.ExtentHeight)),
             Math.Max(paper.Margins.Left, area is null ? 0 : Mm(area.OriginWidth)));
         var document = renderer.Document(batch, width * 25.4 / 96, height * 25.4 / 96, margins, paper.Gap, CutMarks.IsChecked == true);
-        // The document must not be attached to two DocumentViewers simultaneously.
-        // Detach any previous preview before displaying this document in the review dialog.
         DocumentPreview.Document = null;
         currentBatch = batch;
-        // Modal review displays the exact document that will be sent to the driver.
         if (!ReviewPrint(document, $"{dialog.PrintQueue.Name} • {document.Pages.Count} páginas • margens sup/dir/inf/esq {margins.Top:0.#}/{margins.Right:0.#}/{margins.Bottom:0.#}/{margins.Left:0.#} mm"))
         {
             DocumentPreview.Document = document;
@@ -983,7 +1042,6 @@ public partial class MainWindow : Window
         viewer.CommandBindings.Add(new CommandBinding(ApplicationCommands.Print, (_, args) => args.Handled = true, (_, args) => { args.CanExecute = false; args.Handled = true; }));
         panel.Children.Add(viewer); window.Content = panel;
         var confirmed = window.ShowDialog() == true;
-        // Release the viewer before printing the paginator or reusing it in the main view.
         viewer.Document = null;
         return confirmed;
     }

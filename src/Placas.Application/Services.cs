@@ -25,7 +25,6 @@ public interface IStore
     void SaveItem(PriceItem item);
     void SaveFamily(FamilyInfo family);
 
-    // Biblioteca de imagens: logos e fotos. A imagem do produto é vinculada pelo código do produto.
     string? FindImage(string hash);
     string AddImage(string name, string hash, byte[] data, byte[] thumbnail);
     List<ImageInfo> Images();
@@ -33,6 +32,7 @@ public interface IStore
     void RenameImage(string id, string name);
     int DeleteImage(string id);
     void SetProductImage(string code, string? imageId);
+    void SetFamilyImage(string familyCode, string? imageId);
     void DeleteItem(string id);
     int DeleteItems(IReadOnlyCollection<string> ids);
 
@@ -71,8 +71,6 @@ public interface IStore
 
 public static class FamilyPlates
 {
-    // Chave de agrupamento das placas coletivas. Prioridade: família com descrição; depois, o grupo
-    // da promoção (que tem descrição própria na planilha); por fim a família sem descrição (Build explica o erro).
     public static string? Key(PriceItem item)
     {
         var hasFamily = !string.IsNullOrWhiteSpace(item.Family);
@@ -82,8 +80,6 @@ public static class FamilyPlates
         return hasFamily ? "F:" + FamilyCode.Key(item.Family!) : null;
     }
 
-    // Monta o item da placa coletiva: a descrição passa a ser a da família (ou do grupo da promoção) e a
-    // condição comercial (preço, validade, quantidade) é a que todos os produtos marcados têm em comum.
     public static PriceItem Build(IReadOnlyList<PriceItem> items)
     {
         if (items.Count == 0) throw new InvalidOperationException("Nenhum produto informado.");
@@ -115,7 +111,8 @@ public static class FamilyPlates
             SubDescription = null,
             FamilyDescription = isGroup ? first.FamilyDescription : description,
             GroupDescription = isGroup ? description : first.GroupDescription,
-            ImageId = null // a foto de um produto não representa a família inteira
+            ImageId = null, 
+            FamilyImageId = isGroup ? null : items.Select(x => x.FamilyImageId).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))
         };
     }
 }
@@ -178,7 +175,6 @@ public sealed class BatchService
     }
 }
 
-// Margens da folha, cada lado independente (em mm).
 public sealed record PageMargins(double Top, double Right, double Bottom, double Left)
 {
     public static PageMargins All(double value) => new(value, value, value, value);
@@ -187,7 +183,6 @@ public sealed record PageMargins(double Top, double Right, double Bottom, double
 
 public static class Pagination
 {
-    // Mantido para margem única nos quatro lados.
     public static (int Columns, int Rows) Grid(
         double pageWidthMm,
         double pageHeightMm,
@@ -209,8 +204,6 @@ public static class Pagination
                 "Margens e espaçamento precisam ser números válidos."
             );
 
-        // No mínimo 1 coluna e 1 linha: placa maior que o papel é posicionada
-        // na margem e a parte excedente é cortada na impressão.
         var columns = Math.Max(1, (int)Math.Floor(
             (pageWidthMm - margins.Left - margins.Right + gap) / (template.WidthMm + gap)));
 
