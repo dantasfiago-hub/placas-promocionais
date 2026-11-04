@@ -97,7 +97,7 @@ public sealed class PlateRenderer
             if (string.IsNullOrWhiteSpace(resolved) && element.Text.Contains('{')) continue;
             var text = new TextBlock
             {
-                Text = resolved, FontFamily = new FontFamily("Segoe UI"),
+                Text = resolved, FontFamily = new FontFamily(string.IsNullOrWhiteSpace(element.FontFamily) ? "Segoe UI" : element.FontFamily),
                 FontWeight = element.Bold ? FontWeights.Bold : FontWeights.Normal,
                 FontStyle = element.Italic ? FontStyles.Italic : FontStyles.Normal,
                 Foreground = Brush(element.Foreground), TextAlignment = TextAlignment.Center,

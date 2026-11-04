@@ -167,6 +167,7 @@
                   <DataGridTextColumn Header="X" Binding="{Binding X, UpdateSourceTrigger=PropertyChanged}" Width="45"/><DataGridTextColumn Header="Y" Binding="{Binding Y, UpdateSourceTrigger=PropertyChanged}" Width="45"/>
                   <DataGridTextColumn Header="Larg." Binding="{Binding Width, UpdateSourceTrigger=PropertyChanged}" Width="50"/><DataGridTextColumn Header="Alt." Binding="{Binding Height, UpdateSourceTrigger=PropertyChanged}" Width="50"/>
                   <DataGridTextColumn Header="Fonte" Binding="{Binding FontSize, UpdateSourceTrigger=PropertyChanged}" Width="50"/><DataGridTextColumn Header="Mín." Binding="{Binding MinFontSize, UpdateSourceTrigger=PropertyChanged}" Width="50"/>
+                  <DataGridTextColumn Header="Tipo de letra" Binding="{Binding FontFamily, UpdateSourceTrigger=PropertyChanged}" Width="130"/>
                   <DataGridTextColumn Header="Cor" Binding="{Binding Foreground, UpdateSourceTrigger=PropertyChanged}" Width="90"/><DataGridTextColumn Header="Fundo" Binding="{Binding Background, UpdateSourceTrigger=PropertyChanged}" Width="100"/>
                   <DataGridCheckBoxColumn Header="Negrito" Binding="{Binding Bold, UpdateSourceTrigger=PropertyChanged}"/>
                   <DataGridCheckBoxColumn Header="Itálico" Binding="{Binding Italic, UpdateSourceTrigger=PropertyChanged}"/>
