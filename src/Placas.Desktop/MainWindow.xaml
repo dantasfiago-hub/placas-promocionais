@@ -167,7 +167,18 @@
                   <DataGridTextColumn Header="X" Binding="{Binding X, UpdateSourceTrigger=PropertyChanged}" Width="45"/><DataGridTextColumn Header="Y" Binding="{Binding Y, UpdateSourceTrigger=PropertyChanged}" Width="45"/>
                   <DataGridTextColumn Header="Larg." Binding="{Binding Width, UpdateSourceTrigger=PropertyChanged}" Width="50"/><DataGridTextColumn Header="Alt." Binding="{Binding Height, UpdateSourceTrigger=PropertyChanged}" Width="50"/>
                   <DataGridTextColumn Header="Fonte" Binding="{Binding FontSize, UpdateSourceTrigger=PropertyChanged}" Width="50"/><DataGridTextColumn Header="Mín." Binding="{Binding MinFontSize, UpdateSourceTrigger=PropertyChanged}" Width="50"/>
-                  <DataGridTextColumn Header="Tipo de letra" Binding="{Binding FontFamily, UpdateSourceTrigger=PropertyChanged}" Width="130"/>
+                  <DataGridTemplateColumn Header="Tipo de letra" Width="180" SortMemberPath="FontFamily">
+                    <DataGridTemplateColumn.CellTemplate>
+                      <DataTemplate>
+                        <Button Click="PickFontClick" Margin="2" Padding="6,1" HorizontalContentAlignment="Stretch" ToolTip="Clique para escolher o tipo de letra. Com vários elementos selecionados, vale para todos.">
+                          <DockPanel LastChildFill="True">
+                            <TextBlock DockPanel.Dock="Right" Text="▾" Margin="6,0,0,0"/>
+                            <TextBlock Text="{Binding FontFamily}" TextTrimming="CharacterEllipsis"/>
+                          </DockPanel>
+                        </Button>
+                      </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                  </DataGridTemplateColumn>
                   <DataGridTextColumn Header="Cor" Binding="{Binding Foreground, UpdateSourceTrigger=PropertyChanged}" Width="90"/><DataGridTextColumn Header="Fundo" Binding="{Binding Background, UpdateSourceTrigger=PropertyChanged}" Width="100"/>
                   <DataGridCheckBoxColumn Header="Negrito" Binding="{Binding Bold, UpdateSourceTrigger=PropertyChanged}"/>
                   <DataGridCheckBoxColumn Header="Itálico" Binding="{Binding Italic, UpdateSourceTrigger=PropertyChanged}"/>

@@ -69,6 +69,7 @@ public sealed class ProductRow(PriceItem item) : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 }
 public sealed record ImageChoice(string Id, string Name);
+public sealed record FontChoice(string Name, System.Windows.Media.FontFamily Family);
 public sealed class ImageRow(ImageInfo info)
 {
     private System.Windows.Media.ImageSource? thumbnail;
@@ -766,6 +767,7 @@ public partial class MainWindow : Window
         renderer.ClearImageCache(); RefreshImages(); RefreshProducts(); InvalidatePreview(); QueueEditorPreview();
     }
 
+    // Lê o arquivo, reduz e grava na biblioteca. Arquivo idêntico a um já existente reaproveita o registro.
     private string AddImageFile(string path, string? name = null)
     {
         var info = new FileInfo(path);
@@ -953,6 +955,119 @@ public partial class MainWindow : Window
         window.Content = panel;
         Load(currentId);
         window.ShowDialog();
+        return result;
+    }
+
+    private static List<FontChoice>? fontChoices;
+
+    private void PickFontClick(object sender, RoutedEventArgs e) => Run(() =>
+    {
+        if (sender is not Button button || button.DataContext is not PlateElement element) return;
+        var chosen = PickFontDialog(element.FontFamily);
+        if (chosen is null) return;
+        var targets = ElementsGrid.SelectedItems.Contains(element)
+            ? ElementsGrid.SelectedItems.OfType<PlateElement>().ToList()
+            : new List<PlateElement> { element };
+        foreach (var target in targets) target.FontFamily = chosen;
+        ElementsGrid.Items.Refresh(); QueueEditorPreview();
+        Status.Text = $"Tipo de letra \"{chosen}\" aplicado a {targets.Count} elemento(s).";
+    });
+
+    private string? PickFontDialog(string? current)
+    {
+        var fonts = fontChoices ??= System.Windows.Media.Fonts.SystemFontFamilies
+            .Select(f => new FontChoice(f.Source, f))
+            .GroupBy(f => f.Name, StringComparer.CurrentCultureIgnoreCase).Select(g => g.First())
+            .OrderBy(f => f.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+
+        var window = new Window
+        {
+            Title = "Escolher tipo de letra", Width = 400, Height = 560, Owner = this, ShowInTaskbar = false,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner, MinWidth = 320, MinHeight = 380
+        };
+        var search = new TextBox { Margin = new Thickness(0, 0, 0, 4), ToolTip = "Digite para filtrar a lista" };
+        var info = new TextBlock { Foreground = System.Windows.Media.Brushes.Gray, Margin = new Thickness(2, 0, 0, 6) };
+        var list = new ListBox { ItemsSource = fonts };
+        var text = new FrameworkElementFactory(typeof(TextBlock));
+        text.SetBinding(TextBlock.TextProperty, new System.Windows.Data.Binding(nameof(FontChoice.Name)));
+        text.SetBinding(TextBlock.FontFamilyProperty, new System.Windows.Data.Binding(nameof(FontChoice.Family)));
+        text.SetValue(TextBlock.FontSizeProperty, 16.0);
+        text.SetValue(TextBlock.PaddingProperty, new Thickness(6, 3, 6, 3));
+        list.ItemTemplate = new DataTemplate { VisualTree = text };
+        VirtualizingPanel.SetIsVirtualizing(list, true);
+        VirtualizingPanel.SetVirtualizationMode(list, VirtualizationMode.Recycling);
+        ScrollViewer.SetCanContentScroll(list, true);
+
+        var preview = new TextBlock
+        {
+            Text = "OFERTA R$ 12,99 — Pão de queijo 350 ml", FontSize = 22, TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 8, 0, 8), MinHeight = 64
+        };
+        var use = new Button { Content = "Usar", IsDefault = true, Width = 90, Margin = new Thickness(0, 0, 8, 0) };
+        var typed = new Button { Content = "Usar o texto digitado", Visibility = Visibility.Collapsed, Margin = new Thickness(0, 0, 8, 0), Padding = new Thickness(10, 3, 10, 3) };
+        var cancel = new Button { Content = "Cancelar", IsCancel = true, Width = 90 };
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+        buttons.Children.Add(typed); buttons.Children.Add(use); buttons.Children.Add(cancel);
+
+        var view = System.Windows.Data.CollectionViewSource.GetDefaultView(fonts);
+        string? result = null;
+
+        void ApplyFilter()
+        {
+            var filter = search.Text.Trim();
+            if (filter.Length == 0) view.Filter = null;
+            else view.Filter = o => o is FontChoice f
+                && System.Globalization.CultureInfo.CurrentCulture.CompareInfo.IndexOf(f.Name, filter,
+                    System.Globalization.CompareOptions.IgnoreCase | System.Globalization.CompareOptions.IgnoreNonSpace) >= 0;
+            if (list.SelectedItem is null && list.Items.Count > 0) list.SelectedIndex = 0;
+            info.Text = $"{list.Items.Count} de {fonts.Count} tipos de letra";
+            var exact = fonts.Any(f => string.Equals(f.Name, filter, StringComparison.OrdinalIgnoreCase));
+            typed.Visibility = filter.Length > 0 && !exact ? Visibility.Visible : Visibility.Collapsed;
+        }
+        void Accept()
+        {
+            if (list.SelectedItem is FontChoice selected) result = selected.Name;
+            else if (search.Text.Trim().Length > 0) result = search.Text.Trim();
+            else return;
+            window.DialogResult = true;
+        }
+
+        search.TextChanged += (_, _) => ApplyFilter();
+        search.PreviewKeyDown += (_, args) =>
+        {
+            if (args.Key == Key.Down) { list.SelectedIndex = Math.Min(list.Items.Count - 1, list.SelectedIndex + 1); args.Handled = true; }
+            else if (args.Key == Key.Up) { list.SelectedIndex = Math.Max(0, list.SelectedIndex - 1); args.Handled = true; }
+        };
+        list.SelectionChanged += (_, _) =>
+        {
+            if (list.SelectedItem is not FontChoice selected) return;
+            preview.FontFamily = selected.Family;
+            list.ScrollIntoView(selected);
+        };
+        list.MouseDoubleClick += (_, args) =>
+        {
+            if (args.OriginalSource is DependencyObject source && ItemsControl.ContainerFromElement(list, source) is ListBoxItem) Accept();
+        };
+        use.Click += (_, _) => Accept();
+        typed.Click += (_, _) => { result = search.Text.Trim(); window.DialogResult = true; };
+        window.Loaded += (_, _) =>
+        {
+            var currentChoice = fonts.FirstOrDefault(f => string.Equals(f.Name, current, StringComparison.OrdinalIgnoreCase));
+            if (currentChoice is not null) { list.SelectedItem = currentChoice; list.ScrollIntoView(currentChoice); }
+            info.Text = $"{list.Items.Count} de {fonts.Count} tipos de letra";
+            search.Focus();
+        };
+
+        var header = new StackPanel();
+        header.Children.Add(search); header.Children.Add(info);
+        var footer = new StackPanel();
+        footer.Children.Add(preview); footer.Children.Add(buttons);
+        var root = new DockPanel { Margin = new Thickness(14) };
+        DockPanel.SetDock(header, Dock.Top); DockPanel.SetDock(footer, Dock.Bottom);
+        root.Children.Add(header); root.Children.Add(footer); root.Children.Add(list);
+        window.Content = root;
+        try { window.ShowDialog(); }
+        finally { view.Filter = null; }
         return result;
     }
 
