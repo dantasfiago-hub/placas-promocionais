@@ -145,7 +145,7 @@
           </DockPanel>
           <Grid>
             <Grid.ColumnDefinitions>
-              <ColumnDefinition Width="66"/>
+              <ColumnDefinition Width="88"/>
               <ColumnDefinition Width="*"/>
               <ColumnDefinition Width="320"/>
             </Grid.ColumnDefinitions>
@@ -153,10 +153,10 @@
             <!-- Ferramentas -->
             <Border Grid.Column="0" Background="#F3F5F8" BorderBrush="#D5DBE3" BorderThickness="1" CornerRadius="4" Margin="0,0,6,0">
               <StackPanel Margin="3">
-                <Button Click="AddTextElementClick" Height="54" ToolTip="Adicionar caixa de texto">
+                <Button Click="AddTextElementClick" Height="54" Padding="4,4" ToolTip="Adicionar caixa de texto">
                   <StackPanel><TextBlock Text="T" FontSize="20" FontWeight="Bold" HorizontalAlignment="Center"/><TextBlock Text="Texto" FontSize="10" HorizontalAlignment="Center"/></StackPanel>
                 </Button>
-                <Button Click="AddFieldElementClick" Height="54" ToolTip="Adicionar um campo do produto (descrição, preço, validade...)">
+                <Button Click="AddFieldElementClick" Height="54" Padding="4,4" ToolTip="Adicionar um campo do produto (descrição, preço, validade...)">
                   <StackPanel><TextBlock Text="#" FontSize="20" FontWeight="Bold" HorizontalAlignment="Center"/><TextBlock Text="Campo" FontSize="10" HorizontalAlignment="Center"/></StackPanel>
                   <Button.ContextMenu>
                     <ContextMenu>
@@ -175,8 +175,15 @@
                     </ContextMenu>
                   </Button.ContextMenu>
                 </Button>
-                <Button Click="AddImageElementClick" Height="54" ToolTip="Inserir imagem: do computador, da biblioteca, ou espaço para a imagem do produto ou da família. Imagens ficam ao fundo.">
-                  <StackPanel><TextBlock Text="▣" FontSize="20" HorizontalAlignment="Center"/><TextBlock Text="Imagem" FontSize="10" HorizontalAlignment="Center"/></StackPanel>
+                <Button Click="AddImageElementClick" Height="54" Padding="4,4" ToolTip="Inserir imagem: do computador, da biblioteca, ou espaço para a imagem do produto ou da família. Imagens ficam ao fundo.">
+                  <StackPanel>
+                    <Grid Width="24" Height="20">
+                      <Border BorderBrush="#123740" BorderThickness="1.5" CornerRadius="2"/>
+                      <Ellipse Width="4" Height="4" Fill="#123740" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4,4,0,0"/>
+                      <Polygon Points="2,17 8,10 12,14 16,9 22,17" Stroke="#123740" StrokeThickness="1.5" Fill="Transparent"/>
+                    </Grid>
+                    <TextBlock Text="Imagem" FontSize="10" HorizontalAlignment="Center"/>
+                  </StackPanel>
                   <Button.ContextMenu>
                     <ContextMenu>
                       <MenuItem Header="Inserir imagem do computador…" Click="InsertImageFromFileClick"/>
@@ -189,11 +196,23 @@
                   </Button.ContextMenu>
                 </Button>
                 <Separator Margin="0,8"/>
-                <Button Click="DuplicateElementClick" Height="46" ToolTip="Duplicar o elemento selecionado (Ctrl+D)">
-                  <StackPanel><TextBlock Text="⧉" FontSize="16" HorizontalAlignment="Center"/><TextBlock Text="Duplicar" FontSize="10" HorizontalAlignment="Center"/></StackPanel>
+                <Button Click="DuplicateElementClick" Height="46" Padding="4,4" ToolTip="Duplicar o elemento selecionado (Ctrl+D)">
+                  <StackPanel>
+                    <Grid Width="24" Height="20">
+                      <Rectangle Width="13" Height="13" Stroke="#123740" StrokeThickness="1.5" Fill="Transparent" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="2,0,0,1"/>
+                      <Rectangle Width="13" Height="13" Stroke="#123740" StrokeThickness="1.5" Fill="#F3F5F8" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,1,2,0"/>
+                    </Grid>
+                    <TextBlock Text="Duplicar" FontSize="10" HorizontalAlignment="Center"/>
+                  </StackPanel>
                 </Button>
-                <Button Style="{StaticResource DangerButton}" Click="DeleteElementClick" Height="46" ToolTip="Excluir o elemento selecionado (Delete)">
-                  <StackPanel><TextBlock Text="✕" FontSize="16" HorizontalAlignment="Center"/><TextBlock Text="Excluir" FontSize="10" HorizontalAlignment="Center"/></StackPanel>
+                <Button Style="{StaticResource DangerButton}" Click="DeleteElementClick" Height="46" Padding="4,4" ToolTip="Excluir o elemento selecionado (Delete)">
+                  <StackPanel>
+                    <Grid Width="20" Height="20">
+                      <Rectangle Width="2" Height="18" Fill="#9B1C1C" RenderTransformOrigin="0.5,0.5"><Rectangle.RenderTransform><RotateTransform Angle="45"/></Rectangle.RenderTransform></Rectangle>
+                      <Rectangle Width="2" Height="18" Fill="#9B1C1C" RenderTransformOrigin="0.5,0.5"><Rectangle.RenderTransform><RotateTransform Angle="-45"/></Rectangle.RenderTransform></Rectangle>
+                    </Grid>
+                    <TextBlock Text="Excluir" FontSize="10" HorizontalAlignment="Center"/>
+                  </StackPanel>
                 </Button>
               </StackPanel>
             </Border>
@@ -204,10 +223,10 @@
                 <DockPanel>
                   <TextBlock x:Name="SelectionReadout" DockPanel.Dock="Right" VerticalAlignment="Center" Foreground="#526172" Margin="8,0,0,0"/>
                   <WrapPanel>
-                    <Button x:Name="UndoButton" Content="↶ Desfazer" Click="UndoClick" ToolTip="Desfazer (Ctrl+Z)"/>
-                    <Button x:Name="RedoButton" Content="↷ Refazer" Click="RedoClick" ToolTip="Refazer (Ctrl+Y)"/>
+                    <Button x:Name="UndoButton" FontFamily="Segoe UI Symbol" Content="↶ Desfazer" Click="UndoClick" ToolTip="Desfazer (Ctrl+Z)"/>
+                    <Button x:Name="RedoButton" FontFamily="Segoe UI Symbol" Content="↷ Refazer" Click="RedoClick" ToolTip="Refazer (Ctrl+Y)"/>
                     <Border Width="1" Background="#D5DBE3" Margin="8,3"/>
-                    <Button Content="−" Width="30" Click="ZoomOutClick" ToolTip="Diminuir zoom (Ctrl + roda do mouse)"/>
+                    <Button Content="−" FontFamily="Segoe UI Symbol" Width="30" Click="ZoomOutClick" ToolTip="Diminuir zoom (Ctrl + roda do mouse)"/>
                     <TextBlock x:Name="ZoomText" Text="100%" Width="50" TextAlignment="Center" VerticalAlignment="Center"/>
                     <Button Content="+" Width="30" Click="ZoomInClick" ToolTip="Aumentar zoom (Ctrl + roda do mouse)"/>
                     <Button Content="Ajustar" Click="ZoomFitClick" ToolTip="Ajusta a placa à área visível"/>
@@ -292,7 +311,7 @@
                         <TextBlock Text="Tipo de letra" FontSize="11" Foreground="#526172" Margin="0,6,0,0"/>
                         <Button x:Name="FontButton" Click="InspectorFontClick" HorizontalContentAlignment="Stretch" ToolTip="Escolher o tipo de letra (lista com busca)">
                           <DockPanel LastChildFill="True">
-                            <TextBlock DockPanel.Dock="Right" Text="▾" Margin="6,0,0,0"/>
+                            <TextBlock DockPanel.Dock="Right" Text="▾" FontFamily="Segoe UI Symbol" Margin="6,0,0,0"/>
                             <TextBlock x:Name="FontButtonText" TextTrimming="CharacterEllipsis"/>
                           </DockPanel>
                         </Button>
@@ -305,9 +324,9 @@
                           <ToggleButton x:Name="BoldToggle" Content="N" FontWeight="Bold" Width="32" Height="26" Margin="3" Click="StyleToggleClick" ToolTip="Negrito"/>
                           <ToggleButton x:Name="ItalicToggle" Content="I" FontStyle="Italic" Width="32" Height="26" Margin="3" Click="StyleToggleClick" ToolTip="Itálico"/>
                           <Border Width="1" Background="#D5DBE3" Margin="6,3"/>
-                          <ToggleButton x:Name="AlignLeftToggle" Content="⇤" Tag="Left" Width="32" Height="26" Margin="3" Click="AlignClick" ToolTip="Alinhar à esquerda"/>
-                          <ToggleButton x:Name="AlignCenterToggle" Content="↔" Tag="Center" Width="32" Height="26" Margin="3" Click="AlignClick" ToolTip="Centralizar"/>
-                          <ToggleButton x:Name="AlignRightToggle" Content="⇥" Tag="Right" Width="32" Height="26" Margin="3" Click="AlignClick" ToolTip="Alinhar à direita"/>
+                          <ToggleButton x:Name="AlignLeftToggle" Content="⇤" FontFamily="Segoe UI Symbol" Tag="Left" Width="32" Height="26" Margin="3" Click="AlignClick" ToolTip="Alinhar à esquerda"/>
+                          <ToggleButton x:Name="AlignCenterToggle" Content="↔" FontFamily="Segoe UI Symbol" Tag="Center" Width="32" Height="26" Margin="3" Click="AlignClick" ToolTip="Centralizar"/>
+                          <ToggleButton x:Name="AlignRightToggle" Content="⇥" FontFamily="Segoe UI Symbol" Tag="Right" Width="32" Height="26" Margin="3" Click="AlignClick" ToolTip="Alinhar à direita"/>
                         </StackPanel>
                         <TextBlock Text="Cor do texto" FontSize="11" Foreground="#526172" Margin="0,6,0,0"/>
                         <StackPanel Orientation="Horizontal">
