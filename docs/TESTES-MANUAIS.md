@@ -26,5 +26,9 @@ Build automatizado não comprova comportamento do driver ou saída física. Exec
 22. Consultar histórico, mudar o modelo original e carregar o lote antigo: layout antigo deve ser preservado.
 23. Tentar reimpressão com data posterior à validade: deve bloquear.
 24. Gerar backup manual e testar restauração em uma cópia da instalação conforme README.
+25. No editor de layouts, usar Ctrl+clique ou Shift+clique na placa e na lista de camadas para selecionar vários elementos; arrastar e usar Delete/duplicar deve operar sobre todos os selecionados.
+26. Selecionar um elemento, alterar Rotação (graus), salvar o layout e conferir que o ângulo permanece após fechar e reabrir, inclusive na prévia de impressão.
+27. Conferir as réguas em milímetros no topo e à esquerda da placa; seus valores devem acompanhar zoom, ajuste à tela e rolagem.
+28. Conferir que os ícones de zoom e de ordenação de camadas aparecem e respondem ao clique.
 
 Registrar versão do Windows, modelo/driver da impressora, papel, resultado e eventuais ajustes necessários.

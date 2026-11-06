@@ -76,6 +76,11 @@ public sealed class PlateRenderer
             Width = Dip(element.Width), Height = Dip(element.Height),
             Background = Brush(element.Background), ClipToBounds = true, Child = content
         };
+        if (element.RotationDegrees != 0)
+        {
+            box.RenderTransform = new RotateTransform(element.RotationDegrees);
+            box.RenderTransformOrigin = new Point(.5, .5);
+        }
         if (bitmap is null) { box.BorderBrush = Brushes.Gray; box.BorderThickness = new Thickness(1); }
         return box;
     }
@@ -106,11 +111,17 @@ public sealed class PlateRenderer
             text.FontSize = Math.Max(element.MinFontSize, text.FontSize - 1);
         }
         text.VerticalAlignment = VerticalAlignment.Center;
-        return new Border
+        var textBox = new Border
         {
             Width = Dip(element.Width), Height = Dip(element.Height),
             Background = Brush(element.Background), Child = text
         };
+        if (element.RotationDegrees != 0)
+        {
+            textBox.RenderTransform = new RotateTransform(element.RotationDegrees);
+            textBox.RenderTransformOrigin = new Point(.5, .5);
+        }
+        return textBox;
     }
 
     public Canvas Plate(PlateTemplate template, PriceItem item, bool placeholders = false)

@@ -9,6 +9,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
+using System.Windows.Threading;
 using Placas.Domain;
 using Placas.Rendering;
 
@@ -25,8 +26,9 @@ public partial class MainWindow
 
     private readonly Dictionary<PlateElement, Border> designVisuals = [];
     private readonly Dictionary<PlateElement, Rectangle> designHits = [];
+    private readonly Dictionary<PlateElement, Rectangle> selectionOutlines = [];
     private readonly Dictionary<string, Rectangle> handles = [];
-    private readonly Rectangle selectionBox = new() { Fill = Brushes.Transparent, IsHitTestVisible = false, Visibility = Visibility.Collapsed };
+    private readonly List<PlateElement> designSelectedElements = [];
     private readonly Line guideV = new() { IsHitTestVisible = false, Visibility = Visibility.Collapsed };
     private readonly Line guideH = new() { IsHitTestVisible = false, Visibility = Visibility.Collapsed };
     private readonly PriceItem designItem = Example();
@@ -46,6 +48,7 @@ public partial class MainWindow
     private string dragHandle = "";
     private Point dragStart;
     private (double X, double Y, double W, double H) dragOrigin;
+    private readonly Dictionary<PlateElement, (double X, double Y)> dragPositions = [];
 
     private static readonly Dictionary<string, (string Text, double W, double H, double Size, bool Bold)> FieldPresets = new()
     {
@@ -65,7 +68,6 @@ public partial class MainWindow
 
     private void InitDesigner()
     {
-        selectionBox.Stroke = AccentBrush;
         guideV.Stroke = GuideBrush; guideH.Stroke = GuideBrush;
         foreach (var name in new[] { "NW", "N", "NE", "E", "SE", "S", "SW", "W" })
         {
@@ -119,6 +121,7 @@ public partial class MainWindow
     private void BindDesigner()
     {
         designSelected = null;
+        designSelectedElements.Clear();
         RebuildDesigner();
         FillInspector();
         fitMode = true;
@@ -133,17 +136,20 @@ public partial class MainWindow
     {
         EndDrag();
         PlateLayer.Children.Clear(); OverlayLayer.Children.Clear();
-        designVisuals.Clear(); designHits.Clear();
+        designVisuals.Clear(); designHits.Clear(); selectionOutlines.Clear();
         if (editing is null)
         {
             PlateLayer.Width = PlateLayer.Height = OverlayLayer.Width = OverlayLayer.Height = 0;
-            designSelected = null;
+            designSelected = null; designSelectedElements.Clear();
             UpdateSelectionVisuals(); RefreshLayers();
+            RenderRulers();
             return;
         }
         PlateLayer.Width = OverlayLayer.Width = ToDip(editing.WidthMm);
         PlateLayer.Height = OverlayLayer.Height = ToDip(editing.HeightMm);
-        if (designSelected is not null && !editing.Elements.Contains(designSelected)) designSelected = null;
+        designSelectedElements.RemoveAll(x => !editing.Elements.Contains(x));
+        if (designSelected is not null && !designSelectedElements.Contains(designSelected))
+            designSelected = designSelectedElements.LastOrDefault();
         foreach (var element in DrawOrder(editing))
         {
             var hit = new Rectangle { Fill = Brushes.Transparent, Tag = element, Cursor = Cursors.SizeAll };
@@ -153,13 +159,20 @@ public partial class MainWindow
             OverlayLayer.Children.Add(hit);
             designHits[element] = hit;
             PositionElement(element);
+            var outline = new Rectangle
+            {
+                Fill = Brushes.Transparent, Stroke = AccentBrush, Visibility = Visibility.Collapsed,
+                IsHitTestVisible = false
+            };
+            OverlayLayer.Children.Add(outline);
+            selectionOutlines[element] = outline;
         }
-        OverlayLayer.Children.Add(selectionBox);
         foreach (var handle in handles.Values) OverlayLayer.Children.Add(handle);
         OverlayLayer.Children.Add(guideV); OverlayLayer.Children.Add(guideH);
         RebuildVisuals();
         UpdateSelectionVisuals();
         RefreshLayers();
+        RenderRulers();
     }
 
     private void RebuildVisuals()
@@ -212,6 +225,13 @@ public partial class MainWindow
         {
             hit.Width = ToDip(element.Width); hit.Height = ToDip(element.Height);
             Canvas.SetLeft(hit, ToDip(element.X)); Canvas.SetTop(hit, ToDip(element.Y));
+            hit.RenderTransform = element.RotationDegrees == 0 ? Transform.Identity : new RotateTransform(element.RotationDegrees);
+            hit.RenderTransformOrigin = new Point(.5, .5);
+        }
+        if (designVisuals.TryGetValue(element, out var rotatedVisual))
+        {
+            rotatedVisual.RenderTransform = element.RotationDegrees == 0 ? Transform.Identity : new RotateTransform(element.RotationDegrees);
+            rotatedVisual.RenderTransformOrigin = new Point(.5, .5);
         }
     }
 
@@ -219,6 +239,21 @@ public partial class MainWindow
     private void SelectElement(PlateElement? element)
     {
         designSelected = element;
+        designSelectedElements.Clear();
+        if (element is not null) designSelectedElements.Add(element);
+        UpdateSelectionVisuals();
+        FillInspector();
+        SyncLayersSelection();
+    }
+
+    private void SelectElements(IEnumerable<PlateElement> elements, PlateElement? primary = null)
+    {
+        designSelectedElements.Clear();
+        if (editing is not null)
+            designSelectedElements.AddRange(elements.Where(editing.Elements.Contains).Distinct());
+        designSelected = primary is not null && designSelectedElements.Contains(primary)
+            ? primary
+            : designSelectedElements.LastOrDefault();
         UpdateSelectionVisuals();
         FillInspector();
         SyncLayersSelection();
@@ -226,19 +261,32 @@ public partial class MainWindow
 
     private void UpdateSelectionVisuals()
     {
-        var element = designSelected;
-        if (element is null || editing is null)
+        if (editing is null || designSelectedElements.Count == 0)
         {
-            selectionBox.Visibility = Visibility.Collapsed;
+            foreach (var outline in selectionOutlines.Values) outline.Visibility = Visibility.Collapsed;
             foreach (var handle in handles.Values) handle.Visibility = Visibility.Collapsed;
             SelectionReadout.Text = editing is null ? "" : $"Placa {Fmt(editing.WidthMm)} × {Fmt(editing.HeightMm)} mm";
             return;
         }
-        double x = ToDip(element.X), y = ToDip(element.Y), w = ToDip(element.Width), h = ToDip(element.Height);
-        selectionBox.Width = w; selectionBox.Height = h;
-        Canvas.SetLeft(selectionBox, x); Canvas.SetTop(selectionBox, y);
-        selectionBox.StrokeThickness = 1.5 / zoom;
-        selectionBox.Visibility = Visibility.Visible;
+        foreach (var element in designSelectedElements)
+        {
+            if (!selectionOutlines.TryGetValue(element, out var outline)) continue;
+            outline.Width = ToDip(element.Width); outline.Height = ToDip(element.Height);
+            outline.StrokeThickness = 1.5 / zoom;
+            Canvas.SetLeft(outline, ToDip(element.X)); Canvas.SetTop(outline, ToDip(element.Y));
+            outline.RenderTransform = Transform.Identity;
+            outline.Visibility = Visibility.Visible;
+        }
+        foreach (var (element, outline) in selectionOutlines)
+            if (!designSelectedElements.Contains(element)) outline.Visibility = Visibility.Collapsed;
+        if (designSelectedElements.Count != 1)
+        {
+            foreach (var handle in handles.Values) handle.Visibility = Visibility.Collapsed;
+            SelectionReadout.Text = $"{designSelectedElements.Count} elementos selecionados";
+            return;
+        }
+        var selectedElement = designSelected!;
+        double x = ToDip(selectedElement.X), y = ToDip(selectedElement.Y), w = ToDip(selectedElement.Width), h = ToDip(selectedElement.Height);
         var size = 9 / zoom;
         foreach (var (name, handle) in handles)
         {
@@ -249,12 +297,12 @@ public partial class MainWindow
             Canvas.SetLeft(handle, cx - size / 2); Canvas.SetTop(handle, cy - size / 2);
             handle.Visibility = Visibility.Visible;
         }
-        SelectionReadout.Text = $"X {Fmt(element.X)}  Y {Fmt(element.Y)}  •  {Fmt(element.Width)} × {Fmt(element.Height)} mm";
+        SelectionReadout.Text = $"X {Fmt(selectedElement.X)}  Y {Fmt(selectedElement.Y)}  •  {Fmt(selectedElement.Width)} × {Fmt(selectedElement.Height)} mm  •  {Fmt(selectedElement.RotationDegrees)}°";
     }
 
     private void HitEnter(object sender, MouseEventArgs e)
     {
-        if (sender is not Rectangle rectangle || dragKind != DragKind.None || ReferenceEquals(rectangle.Tag, designSelected)) return;
+        if (sender is not Rectangle { Tag: PlateElement hovered } rectangle || dragKind != DragKind.None || designSelectedElements.Contains(hovered)) return;
         rectangle.Stroke = HoverBrush; rectangle.StrokeThickness = 1 / zoom;
     }
     private void HitLeave(object sender, MouseEventArgs e)
@@ -268,13 +316,30 @@ public partial class MainWindow
         e.Handled = true;
         rectangle.Stroke = null;
         DesignScroll.Focus();
-        SelectElement(element);
+        var control = Keyboard.Modifiers.HasFlag(ModifierKeys.Control);
+        var shift = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
+        if (control)
+        {
+            if (designSelectedElements.Contains(element))
+            {
+                var remaining = designSelectedElements.Where(x => !ReferenceEquals(x, element)).ToList();
+                SelectElements(remaining, remaining.LastOrDefault());
+                return;
+            }
+            SelectElements(designSelectedElements.Append(element), element);
+        }
+        else if (shift)
+            SelectElements(designSelectedElements.Append(element), element);
+        else if (!designSelectedElements.Contains(element))
+            SelectElement(element);
+        else
+            SelectElements(designSelectedElements, element);
         BeginDrag(DragKind.Move, "", e);
     }
 
     private void HandleDown(object sender, MouseButtonEventArgs e)
     {
-        if (sender is not Rectangle { Tag: string name } || designSelected is null) return;
+        if (sender is not Rectangle { Tag: string name } || designSelected is null || designSelectedElements.Count != 1) return;
         e.Handled = true;
         DesignScroll.Focus();
         BeginDrag(DragKind.Resize, name, e);
@@ -294,6 +359,10 @@ public partial class MainWindow
         dragKind = kind; dragHandle = handle;
         dragStart = e.GetPosition(OverlayLayer);
         dragOrigin = (designSelected.X, designSelected.Y, designSelected.Width, designSelected.Height);
+        dragPositions.Clear();
+        IEnumerable<PlateElement> targets = kind == DragKind.Move ? designSelectedElements : new[] { designSelected };
+        foreach (var element in targets)
+            dragPositions[element] = (element.X, element.Y);
         OverlayLayer.CaptureMouse();
     }
 
@@ -316,8 +385,13 @@ public partial class MainWindow
     private void OverlayMouseUp(object sender, MouseButtonEventArgs e)
     {
         if (dragKind == DragKind.None) return;
+        var wasResizing = dragKind == DragKind.Resize;
         EndDrag();
-        if (designSelected is not null) { RefreshVisual(designSelected); FillInspector(); }
+        if (designSelected is not null)
+        {
+            if (wasResizing) RefreshVisual(designSelected);
+            FillInspector();
+        }
         CommitHistory();
     }
 
@@ -331,19 +405,24 @@ public partial class MainWindow
         if (SnapCheck.IsChecked == true)
         {
             var threshold = SnapThreshold();
-            if (BestSnap(new[] { x, x + o.W / 2, x + o.W }, VerticalLines(element), threshold, out var vLine) is { } deltaX)
+            if (BestSnap(new[] { x, x + o.W / 2, x + o.W }, VerticalLines(), threshold, out var vLine) is { } deltaX)
             {
                 x += deltaX; ShowGuideV(vLine);
             }
-            if (BestSnap(new[] { y, y + o.H / 2, y + o.H }, HorizontalLines(element), threshold, out var hLine) is { } deltaY)
+            if (BestSnap(new[] { y, y + o.H / 2, y + o.H }, HorizontalLines(), threshold, out var hLine) is { } deltaY)
             {
                 y += deltaY; ShowGuideH(hLine);
             }
         }
-        element.X = Math.Round(x, 2); element.Y = Math.Round(y, 2);
-        PositionElement(element);
+        dx = x - o.X; dy = y - o.Y;
+        foreach (var selected in designSelectedElements)
+        {
+            var origin = dragPositions[selected];
+            selected.X = Math.Round(origin.X + dx, 2); selected.Y = Math.Round(origin.Y + dy, 2);
+            PositionElement(selected);
+        }
         UpdateSelectionVisuals();
-        UpdatePositionFields();
+        if (designSelectedElements.Count == 1) UpdatePositionFields();
     }
 
     private void ApplyResize(Point point)
@@ -361,7 +440,7 @@ public partial class MainWindow
         if (SnapCheck.IsChecked == true)
         {
             var threshold = SnapThreshold();
-            var vLines = VerticalLines(element); var hLines = HorizontalLines(element);
+            var vLines = VerticalLines(); var hLines = HorizontalLines();
             if (west && BestSnap(new[] { left }, vLines, threshold, out var lineW) is { } snapW) { left += snapW; ShowGuideV(lineW); }
             if (east && BestSnap(new[] { right }, vLines, threshold, out var lineE) is { } snapE) { right += snapE; ShowGuideV(lineE); }
             if (north && BestSnap(new[] { top }, hLines, threshold, out var lineN) is { } snapN) { top += snapN; ShowGuideH(lineN); }
@@ -390,17 +469,17 @@ public partial class MainWindow
 
     private double SnapThreshold() => 7 / zoom / MmToDip; 
 
-    private List<double> VerticalLines(PlateElement exclude)
+    private List<double> VerticalLines()
     {
         var lines = new List<double> { 0, editing!.WidthMm / 2, editing.WidthMm };
-        foreach (var other in editing.Elements.Where(x => !ReferenceEquals(x, exclude)))
+        foreach (var other in editing.Elements.Where(x => !designSelectedElements.Contains(x)))
         { lines.Add(other.X); lines.Add(other.X + other.Width / 2); lines.Add(other.X + other.Width); }
         return lines;
     }
-    private List<double> HorizontalLines(PlateElement exclude)
+    private List<double> HorizontalLines()
     {
         var lines = new List<double> { 0, editing!.HeightMm / 2, editing.HeightMm };
-        foreach (var other in editing.Elements.Where(x => !ReferenceEquals(x, exclude)))
+        foreach (var other in editing.Elements.Where(x => !designSelectedElements.Contains(x)))
         { lines.Add(other.Y); lines.Add(other.Y + other.Height / 2); lines.Add(other.Y + other.Height); }
         return lines;
     }
@@ -437,7 +516,75 @@ public partial class MainWindow
         ZoomTransform.ScaleX = zoom; ZoomTransform.ScaleY = zoom;
         ZoomText.Text = $"{zoom * 100:0}%";
         UpdateSelectionVisuals();
+        Dispatcher.BeginInvoke(DispatcherPriority.Render, new Action(RenderRulers));
     }
+
+    private static double NiceRulerStep(double minimum)
+    {
+        if (minimum <= 0) return 1;
+        var magnitude = Math.Pow(10, Math.Floor(Math.Log10(minimum)));
+        var normalized = minimum / magnitude;
+        return (normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10) * magnitude;
+    }
+
+    private static void AddRulerLine(Canvas canvas, double x1, double y1, double x2, double y2, Brush brush)
+    {
+        var line = new Line { X1 = x1, Y1 = y1, X2 = x2, Y2 = y2, Stroke = brush, StrokeThickness = .75 };
+        canvas.Children.Add(line);
+    }
+
+    private void RenderRulers()
+    {
+        if (!RulerHost.IsLoaded) return;
+        HorizontalRuler.Children.Clear();
+        VerticalRuler.Children.Clear();
+        if (editing is null || zoom <= 0 || HorizontalRuler.ActualWidth <= 0 || VerticalRuler.ActualHeight <= 0) return;
+
+        var plateOrigin = PlateLayer.TranslatePoint(new Point(0, 0), RulerHost);
+        var pixelsPerMm = MmToDip * zoom;
+        var horizontalOrigin = plateOrigin.X - 22;
+        var verticalOrigin = plateOrigin.Y - 22;
+        var majorStep = NiceRulerStep(42 / pixelsPerMm);
+        var minorStep = majorStep / 5;
+        var rulerBrush = new SolidColorBrush(Color.FromRgb(107, 119, 133));
+        var firstX = Math.Max(0, Math.Ceiling(-horizontalOrigin / pixelsPerMm / minorStep));
+        var lastX = Math.Min(Math.Ceiling(editing.WidthMm / minorStep), Math.Floor((HorizontalRuler.ActualWidth - horizontalOrigin) / pixelsPerMm / minorStep));
+        for (var index = firstX; index <= lastX; index++)
+        {
+            var mm = index * minorStep;
+            var x = horizontalOrigin + mm * pixelsPerMm;
+            var major = Math.Abs(mm / majorStep - Math.Round(mm / majorStep)) < .0001;
+            AddRulerLine(HorizontalRuler, x, 22, x, major ? 12 : 17, rulerBrush);
+            if (major)
+            {
+                var label = new TextBlock { Text = Fmt(mm), FontSize = 8, Foreground = rulerBrush };
+                Canvas.SetLeft(label, x + 2); Canvas.SetTop(label, 1);
+                HorizontalRuler.Children.Add(label);
+            }
+        }
+
+        var firstY = Math.Max(0, Math.Ceiling(-verticalOrigin / pixelsPerMm / minorStep));
+        var lastY = Math.Min(Math.Ceiling(editing.HeightMm / minorStep), Math.Floor((VerticalRuler.ActualHeight - verticalOrigin) / pixelsPerMm / minorStep));
+        for (var index = firstY; index <= lastY; index++)
+        {
+            var mm = index * minorStep;
+            var y = verticalOrigin + mm * pixelsPerMm;
+            var major = Math.Abs(mm / majorStep - Math.Round(mm / majorStep)) < .0001;
+            AddRulerLine(VerticalRuler, 22, y, major ? 12 : 17, y, rulerBrush);
+            if (major)
+            {
+                var label = new TextBlock
+                {
+                    Text = Fmt(mm), Width = 28, Height = 12, FontSize = 8,
+                    Foreground = rulerBrush, TextAlignment = TextAlignment.Center,
+                    RenderTransform = new RotateTransform(-90), RenderTransformOrigin = new Point(.5, .5)
+                };
+                Canvas.SetLeft(label, -3); Canvas.SetTop(label, y - 6);
+                VerticalRuler.Children.Add(label);
+            }
+        }
+    }
+
     private void ZoomFit()
     {
         if (editing is null || DesignScroll.ActualWidth < 200 || DesignScroll.ActualHeight < 200) return;
@@ -451,6 +598,8 @@ public partial class MainWindow
     private void ZoomFitClick(object sender, RoutedEventArgs e) => ZoomFit();
     private void Zoom100Click(object sender, RoutedEventArgs e) { fitMode = false; SetZoom(1); }
     private void DesignScrollSizeChanged(object sender, SizeChangedEventArgs e) { if (fitMode) ZoomFit(); }
+    private void DesignScrollChanged(object sender, ScrollChangedEventArgs e) => RenderRulers();
+    private void DesignerLoaded(object sender, RoutedEventArgs e) => RenderRulers();
     private void GridToggled(object sender, RoutedEventArgs e) => RebuildVisuals();
     private void DesignWheel(object sender, MouseWheelEventArgs e)
     {
@@ -489,11 +638,14 @@ public partial class MainWindow
     private void Nudge(double dx, double dy)
     {
         if (designSelected is null) return;
-        designSelected.X = Math.Round(designSelected.X + dx, 2);
-        designSelected.Y = Math.Round(designSelected.Y + dy, 2);
-        PositionElement(designSelected);
+        foreach (var element in designSelectedElements)
+        {
+            element.X = Math.Round(element.X + dx, 2);
+            element.Y = Math.Round(element.Y + dy, 2);
+            PositionElement(element);
+        }
         UpdateSelectionVisuals();
-        UpdatePositionFields();
+        if (designSelectedElements.Count == 1) UpdatePositionFields();
         CommitHistory(coalesce: true);
     }
 
@@ -540,11 +692,16 @@ public partial class MainWindow
     private void DuplicateElementClick(object sender, RoutedEventArgs e) => Run(() =>
     {
         if (designSelected is null || editing is null) throw new InvalidOperationException("Selecione um elemento para duplicar.");
-        var copy = JsonSerializer.Deserialize<PlateElement>(JsonSerializer.Serialize(designSelected))!;
-        copy.X = Math.Round(copy.X + 3, 2); copy.Y = Math.Round(copy.Y + 3, 2);
-        editing.Elements.Insert(editing.Elements.IndexOf(designSelected) + 1, copy);
+        var copies = designSelectedElements.Select(element =>
+        {
+            var copy = JsonSerializer.Deserialize<PlateElement>(JsonSerializer.Serialize(element))!;
+            copy.X = Math.Round(copy.X + 3, 2); copy.Y = Math.Round(copy.Y + 3, 2);
+            return copy;
+        }).ToList();
+        foreach (var original in designSelectedElements)
+            editing.Elements.Insert(editing.Elements.IndexOf(original) + 1, copies[designSelectedElements.IndexOf(original)]);
         RebuildDesigner();
-        SelectElement(copy);
+        SelectElements(copies, copies.Last());
         CommitHistory();
     });
 
@@ -552,8 +709,8 @@ public partial class MainWindow
     private void DeleteSelectedElement()
     {
         if (designSelected is null || editing is null) return;
-        editing.Elements.Remove(designSelected);
-        designSelected = null;
+        foreach (var element in designSelectedElements.ToList()) editing.Elements.Remove(element);
+        designSelected = null; designSelectedElements.Clear();
         RebuildDesigner();
         SelectElement(null);
         CommitHistory();
@@ -605,10 +762,17 @@ public partial class MainWindow
     }
     private void RestoreSnapshot(string json)
     {
-        var index = designSelected is null || editing is null ? -1 : editing.Elements.IndexOf(designSelected);
+        List<int> selectedIndices = editing is null
+            ? []
+            : designSelectedElements.Select(element => editing.Elements.IndexOf(element)).Where(index => index >= 0).ToList();
+        var primaryIndex = designSelected is null || editing is null ? -1 : editing.Elements.IndexOf(designSelected);
         editing = JsonSerializer.Deserialize<PlateTemplate>(json)!;
         lastSnapshot = json; lastCommitTime = DateTime.MinValue;
-        designSelected = index >= 0 && index < editing.Elements.Count ? editing.Elements[index] : null;
+        designSelectedElements.Clear();
+        designSelectedElements.AddRange(selectedIndices.Where(index => index < editing.Elements.Count).Select(index => editing.Elements[index]));
+        designSelected = primaryIndex >= 0 && primaryIndex < editing.Elements.Count
+            ? editing.Elements[primaryIndex]
+            : designSelectedElements.LastOrDefault();
         RebuildDesigner();
         FillInspector();
         SyncLayersSelection();
@@ -644,7 +808,8 @@ public partial class MainWindow
             order.Reverse();
             var rows = order.Select(x => new LayerRow(x, x.IsImage ? "▣" : "T", LayerTitle(x, imageChoices))).ToList();
             LayersList.ItemsSource = rows;
-            LayersList.SelectedItem = rows.FirstOrDefault(r => ReferenceEquals(r.Element, designSelected));
+            foreach (var row in rows.Where(row => designSelectedElements.Contains(row.Element)))
+                LayersList.SelectedItems.Add(row);
         }
         finally { layersSync = false; }
     }
@@ -654,15 +819,22 @@ public partial class MainWindow
         layersSync = true;
         try
         {
-            LayersList.SelectedItem = (LayersList.ItemsSource as List<LayerRow>)?.FirstOrDefault(r => ReferenceEquals(r.Element, designSelected));
+            LayersList.SelectedItems.Clear();
+            var rows = LayersList.ItemsSource as List<LayerRow>;
+            foreach (var row in rows?.Where(row => designSelectedElements.Contains(row.Element)) ?? [])
+                LayersList.SelectedItems.Add(row);
         }
         finally { layersSync = false; }
     }
 
     private void LayersSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (layersSync || LayersList.SelectedItem is not LayerRow row) return;
-        SelectElement(row.Element);
+        if (layersSync) return;
+        var rows = LayersList.SelectedItems.OfType<LayerRow>().ToList();
+        var primary = LayersList.SelectedItem is LayerRow selected && rows.Contains(selected)
+            ? selected.Element
+            : rows.LastOrDefault()?.Element;
+        SelectElements(rows.Select(row => row.Element), primary);
     }
 
     private void LayerForwardClick(object sender, RoutedEventArgs e) => MoveLayer(+1);
@@ -671,13 +843,35 @@ public partial class MainWindow
     {
         if (designSelected is null || editing is null) return;
         var list = editing.Elements;
-        var from = list.IndexOf(designSelected);
-        var to = from + direction;
-        while (to >= 0 && to < list.Count && list[to].IsImage != designSelected.IsImage) to += direction;
-        if (to < 0 || to >= list.Count) return;
-        (list[from], list[to]) = (list[to], list[from]);
+        var selected = designSelectedElements.OrderBy(list.IndexOf).ToList();
+        var changed = false;
+        if (direction > 0)
+        {
+            foreach (var element in selected.AsEnumerable().Reverse())
+            {
+                var from = list.IndexOf(element);
+                var to = from + 1;
+                while (to < list.Count && list[to].IsImage != element.IsImage) to++;
+                if (to >= list.Count) continue;
+                (list[from], list[to]) = (list[to], list[from]);
+                changed = true;
+            }
+        }
+        else
+        {
+            foreach (var element in selected)
+            {
+                var from = list.IndexOf(element);
+                var to = from - 1;
+                while (to >= 0 && list[to].IsImage != element.IsImage) to--;
+                if (to < 0) continue;
+                (list[from], list[to]) = (list[to], list[from]);
+                changed = true;
+            }
+        }
+        if (!changed) return;
         RebuildDesigner();
-        SelectElement(designSelected);
+        SelectElements(selected, designSelected);
         CommitHistory();
     }
 
@@ -715,9 +909,11 @@ public partial class MainWindow
         try
         {
             var element = designSelected;
-            PlatePanel.Visibility = element is null ? Visibility.Visible : Visibility.Collapsed;
-            ElementPanel.Visibility = element is null ? Visibility.Collapsed : Visibility.Visible;
-            InspectorTitle.Text = element is null ? "Placa" : element.IsImage ? "Imagem" : "Texto";
+            var multi = designSelectedElements.Count > 1;
+            PlatePanel.Visibility = element is null && !multi ? Visibility.Visible : Visibility.Collapsed;
+            ElementPanel.Visibility = element is null || multi ? Visibility.Collapsed : Visibility.Visible;
+            InspectorTitle.Text = multi ? $"{designSelectedElements.Count} elementos" : element is null ? "Placa" : element.IsImage ? "Imagem" : "Texto";
+            if (multi) return;
             if (element is null)
             {
                 PlateNameBox.IsEnabled = PlateWidthBox.IsEnabled = PlateHeightBox.IsEnabled = editing is not null;
@@ -729,6 +925,7 @@ public partial class MainWindow
             }
             PosXBox.Text = Fmt(element.X); PosYBox.Text = Fmt(element.Y);
             WidthBox.Text = Fmt(element.Width); HeightBox.Text = Fmt(element.Height);
+            RotationBox.Text = Fmt(element.RotationDegrees);
             TextPanel.Visibility = element.IsImage ? Visibility.Collapsed : Visibility.Visible;
             ImagePanel.Visibility = element.IsImage ? Visibility.Visible : Visibility.Collapsed;
             if (element.IsImage)
@@ -756,6 +953,7 @@ public partial class MainWindow
         {
             PosXBox.Text = Fmt(designSelected.X); PosYBox.Text = Fmt(designSelected.Y);
             WidthBox.Text = Fmt(designSelected.Width); HeightBox.Text = Fmt(designSelected.Height);
+            RotationBox.Text = Fmt(designSelected.RotationDegrees);
         }
         finally { syncing = false; }
     }
@@ -798,7 +996,7 @@ public partial class MainWindow
     private void CommitNumeric(TextBox box)
     {
         if (syncing || editing is null) return;
-        var allowZeroOrNegative = box.Name is "PosXBox" or "PosYBox";
+        var allowZeroOrNegative = box.Name is "PosXBox" or "PosYBox" or "RotationBox";
         if (!TryNumber(box.Text, out var value) || (!allowZeroOrNegative && value <= 0)) { FillInspector(); return; }
         value = Math.Round(value, 2);
         switch (box.Name)
@@ -807,6 +1005,7 @@ public partial class MainWindow
             case "PosYBox": ApplyToSelected(el => el.Y = value); break;
             case "WidthBox": ApplyToSelected(el => el.Width = value); break;
             case "HeightBox": ApplyToSelected(el => el.Height = value); break;
+            case "RotationBox": ApplyToSelected(el => el.RotationDegrees = value); break;
             case "FontSizeBox": ApplyToSelected(el => el.FontSize = value); break;
             case "MinFontBox": ApplyToSelected(el => el.MinFontSize = value); break;
             case "PlateWidthBox": editing.WidthMm = value; RebuildDesigner(); if (fitMode) ZoomFit(); break;

@@ -226,9 +226,13 @@
                     <Button x:Name="UndoButton" FontFamily="Segoe UI Symbol" Content="↶ Desfazer" Click="UndoClick" ToolTip="Desfazer (Ctrl+Z)"/>
                     <Button x:Name="RedoButton" FontFamily="Segoe UI Symbol" Content="↷ Refazer" Click="RedoClick" ToolTip="Refazer (Ctrl+Y)"/>
                     <Border Width="1" Background="#D5DBE3" Margin="8,3"/>
-                    <Button Content="−" FontFamily="Segoe UI Symbol" Width="30" Click="ZoomOutClick" ToolTip="Diminuir zoom (Ctrl + roda do mouse)"/>
+                    <Button Width="30" Padding="4,4" Click="ZoomOutClick" ToolTip="Diminuir zoom (Ctrl + roda do mouse)">
+                      <Path Data="M 2,8 L 14,8" Stroke="#123740" StrokeThickness="1.8" Width="16" Height="16"/>
+                    </Button>
                     <TextBlock x:Name="ZoomText" Text="100%" Width="50" TextAlignment="Center" VerticalAlignment="Center"/>
-                    <Button Content="+" Width="30" Click="ZoomInClick" ToolTip="Aumentar zoom (Ctrl + roda do mouse)"/>
+                    <Button Width="30" Padding="4,4" Click="ZoomInClick" ToolTip="Aumentar zoom (Ctrl + roda do mouse)">
+                      <Path Data="M 2,8 L 14,8 M 8,2 L 8,14" Stroke="#123740" StrokeThickness="1.8" Width="16" Height="16"/>
+                    </Button>
                     <Button Content="Ajustar" Click="ZoomFitClick" ToolTip="Ajusta a placa à área visível"/>
                     <Button Content="100%" Click="Zoom100Click"/>
                     <CheckBox x:Name="SnapCheck" Content="Ímãs" IsChecked="True" VerticalAlignment="Center" Margin="14,0,0,0" ToolTip="Alinha às bordas e ao centro da placa e aos outros elementos (mostra guias rosa)"/>
@@ -236,15 +240,24 @@
                   </WrapPanel>
                 </DockPanel>
               </Border>
-              <ScrollViewer x:Name="DesignScroll" Grid.Row="1" Background="#CBD2DB" Focusable="True" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" PreviewMouseWheel="DesignWheel" PreviewKeyDown="DesignKeyDown" SizeChanged="DesignScrollSizeChanged">
-                <Border x:Name="PlateBorder" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="48" BorderBrush="#7C8794" BorderThickness="1" Background="White">
-                  <Border.LayoutTransform><ScaleTransform x:Name="ZoomTransform" ScaleX="1" ScaleY="1"/></Border.LayoutTransform>
-                  <Grid>
-                    <Canvas x:Name="PlateLayer" ClipToBounds="True"/>
-                    <Canvas x:Name="OverlayLayer" Background="Transparent" MouseLeftButtonDown="OverlayBackgroundDown"/>
-                  </Grid>
+              <Grid x:Name="RulerHost" Grid.Row="1" Background="#CBD2DB" Loaded="DesignerLoaded">
+                <Grid.RowDefinitions><RowDefinition Height="22"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="22"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <Border Grid.Row="0" Grid.Column="0" Background="#E5EAF0" BorderBrush="#B8C2CE" BorderThickness="0,0,1,1">
+                  <TextBlock Text="mm" FontSize="8" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                 </Border>
-              </ScrollViewer>
+                <Canvas x:Name="HorizontalRuler" Grid.Row="0" Grid.Column="1" Background="#F3F5F8" ClipToBounds="True" IsHitTestVisible="False"/>
+                <Canvas x:Name="VerticalRuler" Grid.Row="1" Grid.Column="0" Background="#F3F5F8" ClipToBounds="True" IsHitTestVisible="False"/>
+                <ScrollViewer x:Name="DesignScroll" Grid.Row="1" Grid.Column="1" Background="#CBD2DB" Focusable="True" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" PreviewMouseWheel="DesignWheel" PreviewKeyDown="DesignKeyDown" SizeChanged="DesignScrollSizeChanged" ScrollChanged="DesignScrollChanged">
+                  <Border x:Name="PlateBorder" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="48" BorderBrush="#7C8794" BorderThickness="1" Background="White">
+                    <Border.LayoutTransform><ScaleTransform x:Name="ZoomTransform" ScaleX="1" ScaleY="1"/></Border.LayoutTransform>
+                    <Grid>
+                      <Canvas x:Name="PlateLayer" ClipToBounds="True"/>
+                      <Canvas x:Name="OverlayLayer" Background="Transparent" MouseLeftButtonDown="OverlayBackgroundDown" ToolTip="Ctrl+clique ou Shift+clique para selecionar vários elementos; arraste para movê-los juntos."/>
+                    </Grid>
+                  </Border>
+                </ScrollViewer>
+              </Grid>
             </Grid>
 
             <Border Grid.Column="2" Margin="6,0,0,0" Background="#F3F5F8" BorderBrush="#D5DBE3" BorderThickness="1" CornerRadius="4">
@@ -287,6 +300,10 @@
                         <TextBox x:Name="WidthBox" Grid.Row="3" LostFocus="NumericBoxCommit" KeyDown="NumericBoxKeyDown"/>
                         <TextBox x:Name="HeightBox" Grid.Row="3" Grid.Column="1" LostFocus="NumericBoxCommit" KeyDown="NumericBoxKeyDown"/>
                       </Grid>
+                      <StackPanel Margin="0,6,0,0">
+                        <TextBlock Text="Rotação (graus)" FontSize="11" Foreground="#526172"/>
+                        <TextBox x:Name="RotationBox" LostFocus="NumericBoxCommit" KeyDown="NumericBoxKeyDown" ToolTip="Ângulo no sentido horário"/>
+                      </StackPanel>
 
                       <StackPanel x:Name="TextPanel" Margin="0,8,0,0">
                         <TextBlock Text="Texto" FontSize="11" Foreground="#526172"/>
@@ -355,16 +372,20 @@
                 <DockPanel Grid.Row="2" Margin="8,4,8,8">
                   <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                      <Button Content="▲" Width="28" Click="LayerForwardClick" ToolTip="Trazer para frente"/>
-                      <Button Content="▼" Width="28" Click="LayerBackwardClick" ToolTip="Enviar para trás"/>
+                      <Button Width="28" Padding="4" Click="LayerForwardClick" ToolTip="Trazer para frente">
+                        <Path Data="M 2,11 L 8,5 L 14,11 M 8,5 L 8,17" Stroke="#123740" StrokeThickness="1.6" Width="16" Height="16"/>
+                      </Button>
+                      <Button Width="28" Padding="4" Click="LayerBackwardClick" ToolTip="Enviar para trás">
+                        <Path Data="M 2,7 L 8,13 L 14,7 M 8,1 L 8,13" Stroke="#123740" StrokeThickness="1.6" Width="16" Height="16"/>
+                      </Button>
                     </StackPanel>
                     <TextBlock Text="Camadas" FontWeight="SemiBold" Foreground="#102C46" VerticalAlignment="Center"/>
                   </DockPanel>
-                  <ListBox x:Name="LayersList" SelectionChanged="LayersSelectionChanged">
+                  <ListBox x:Name="LayersList" SelectionMode="Extended" SelectionChanged="LayersSelectionChanged" ToolTip="Ctrl+clique ou Shift+clique para selecionar várias camadas.">
                     <ListBox.ItemTemplate>
                       <DataTemplate>
                         <DockPanel>
-                          <TextBlock Text="{Binding Icon}" Width="22" FontWeight="Bold" Foreground="#0F766E"/>
+                          <TextBlock Text="{Binding Icon}" FontFamily="Segoe UI Symbol" Width="22" FontWeight="Bold" Foreground="#0F766E"/>
                           <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"/>
                         </DockPanel>
                       </DataTemplate>

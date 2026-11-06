@@ -62,6 +62,7 @@ public sealed class PlateElement
     public double Y { get; set; } = 30;
     public double Width { get; set; } = 90;
     public double Height { get; set; } = 30;
+    public double RotationDegrees { get; set; }
     public double FontSize { get; set; } = 24;
     public double MinFontSize { get; set; } = 9;
     public string Foreground { get; set; } = "#111827";
@@ -115,7 +116,7 @@ public static class PlateRules
         ValidateColor(template.Background);
         foreach (var e in template.Elements)
         {
-            if (new[] { e.X, e.Y, e.Width, e.Height, e.FontSize, e.MinFontSize }.Any(x => !double.IsFinite(x)) ||
+            if (new[] { e.X, e.Y, e.Width, e.Height, e.RotationDegrees, e.FontSize, e.MinFontSize }.Any(x => !double.IsFinite(x)) ||
                 e.Width <= 0 || e.Height <= 0 || e.FontSize <= 0 || e.MinFontSize <= 0)
                 throw new InvalidOperationException("Largura, altura e tamanhos de fonte devem ser números maiores que zero.");
             ValidateColor(e.Foreground); ValidateColor(e.Background);

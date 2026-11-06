@@ -45,6 +45,18 @@ public class CoreTests
         Assert.NotNull(new BatchService().Create([new(product, 1)], template, Date));
     }
 
+    [Fact] public void TemplateRotationIsSerializedAndValidated()
+    {
+        var template = PlateTemplate.Default();
+        template.Elements[0].RotationDegrees = 37.5;
+        var copy = System.Text.Json.JsonSerializer.Deserialize<PlateTemplate>(
+            System.Text.Json.JsonSerializer.Serialize(template))!;
+        Assert.Equal(37.5, copy.Elements[0].RotationDegrees);
+        PlateRules.ValidateTemplate(copy);
+        copy.Elements[0].RotationDegrees = double.NaN;
+        Assert.Throws<InvalidOperationException>(() => PlateRules.ValidateTemplate(copy));
+    }
+
     [Fact] public void ManualCrudPreservesEditedProduct()
     {
         var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
