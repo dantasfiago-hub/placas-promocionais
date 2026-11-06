@@ -80,43 +80,48 @@ public sealed class PlateRenderer
         return box;
     }
 
+    public Border? Element(PlateElement element, PriceItem item, bool placeholders = false)
+    {
+        if (element.IsImage) return ImageElement(element, item, placeholders);
+        var resolved = PlateRules.Resolve(element.Text, item);
+        if (string.IsNullOrWhiteSpace(resolved) && element.Text.Contains('{'))
+        {
+            if (!placeholders) return null;
+            resolved = element.Text;
+        }
+        var text = new TextBlock
+        {
+            Text = resolved, FontFamily = new FontFamily(string.IsNullOrWhiteSpace(element.FontFamily) ? "Segoe UI" : element.FontFamily),
+            FontWeight = element.Bold ? FontWeights.Bold : FontWeights.Normal,
+            FontStyle = element.Italic ? FontStyles.Italic : FontStyles.Normal,
+            Foreground = Brush(element.Foreground),
+            TextAlignment = element.TextAlign switch { "Left" => TextAlignment.Left, "Right" => TextAlignment.Right, _ => TextAlignment.Center },
+            TextWrapping = TextWrapping.Wrap, Width = Dip(element.Width), FontSize = element.FontSize
+        };
+        while (true)
+        {
+            text.Measure(new Size(text.Width, double.PositiveInfinity));
+            if (text.DesiredSize.Height <= Dip(element.Height) && text.DesiredSize.Width <= text.Width + .01) break;
+            if (text.FontSize <= element.MinFontSize) break;   
+            text.FontSize = Math.Max(element.MinFontSize, text.FontSize - 1);
+        }
+        text.VerticalAlignment = VerticalAlignment.Center;
+        return new Border
+        {
+            Width = Dip(element.Width), Height = Dip(element.Height),
+            Background = Brush(element.Background), Child = text
+        };
+    }
+
     public Canvas Plate(PlateTemplate template, PriceItem item, bool placeholders = false)
     {
         PlateRules.ValidateTemplate(template);
         var canvas = new Canvas { Width = Dip(template.WidthMm), Height = Dip(template.HeightMm), Background = Brush(template.Background), ClipToBounds = true };
         foreach (var element in template.Elements.OrderByDescending(x => x.IsImage))
         {
-            if (element.IsImage)
-            {
-                var box = ImageElement(element, item, placeholders);
-                if (box is null) continue;
-                Canvas.SetLeft(box, Dip(element.X)); Canvas.SetTop(box, Dip(element.Y)); canvas.Children.Add(box);
-                continue;
-            }
-            var resolved = PlateRules.Resolve(element.Text, item);
-            if (string.IsNullOrWhiteSpace(resolved) && element.Text.Contains('{')) continue;
-            var text = new TextBlock
-            {
-                Text = resolved, FontFamily = new FontFamily(string.IsNullOrWhiteSpace(element.FontFamily) ? "Segoe UI" : element.FontFamily),
-                FontWeight = element.Bold ? FontWeights.Bold : FontWeights.Normal,
-                FontStyle = element.Italic ? FontStyles.Italic : FontStyles.Normal,
-                Foreground = Brush(element.Foreground), TextAlignment = TextAlignment.Center,
-                TextWrapping = TextWrapping.Wrap, Width = Dip(element.Width), FontSize = element.FontSize
-            };
-            while (true)
-            {
-                text.Measure(new Size(text.Width, double.PositiveInfinity));
-                if (text.DesiredSize.Height <= Dip(element.Height) && text.DesiredSize.Width <= text.Width + .01) break;
-                if (text.FontSize <= element.MinFontSize) break;   // antes: throw
-                text.FontSize = Math.Max(element.MinFontSize, text.FontSize - 1);
-            }
-            var border = new Border
-            {
-                Width = Dip(element.Width), Height = Dip(element.Height),
-                Background = Brush(element.Background), Child = text
-            };
-            text.VerticalAlignment = VerticalAlignment.Center;
-            Canvas.SetLeft(border, Dip(element.X)); Canvas.SetTop(border, Dip(element.Y)); canvas.Children.Add(border);
+            var box = Element(element, item, placeholders);
+            if (box is null) continue;
+            Canvas.SetLeft(box, Dip(element.X)); Canvas.SetTop(box, Dip(element.Y)); canvas.Children.Add(box);
         }
         return canvas;
     }

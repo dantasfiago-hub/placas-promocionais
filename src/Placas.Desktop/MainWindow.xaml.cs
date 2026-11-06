@@ -122,13 +122,8 @@ public partial class MainWindow : Window
         FitToWorkArea();
         SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
         Closed += (_, _) => SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
-        previewTimer.Tick += (_, _) => { previewTimer.Stop(); RenderEditorPreviewSafely(); };
-        TemplateFields.AddHandler(TextBoxBase.TextChangedEvent, new TextChangedEventHandler((_, _) => QueueEditorPreview()), true);
-        ElementsGrid.AddHandler(TextBoxBase.TextChangedEvent, new TextChangedEventHandler((_, _) => QueueEditorPreview()), true);
-        ElementsGrid.CurrentCellChanged += (_, _) => QueueEditorPreview();
-        ElementsGrid.CellEditEnding += (_, _) => QueueEditorPreview();
-        ElementsGrid.AddHandler(ToggleButton.CheckedEvent, new RoutedEventHandler((_, _) => QueueEditorPreview()), true);
-        ElementsGrid.AddHandler(ToggleButton.UncheckedEvent, new RoutedEventHandler((_, _) => QueueEditorPreview()), true);
+        previewTimer.Tick += (_, _) => { previewTimer.Stop(); RebuildVisuals(); };
+        InitDesigner();
         SaleDate.SelectedDate = DateTime.Today;
         BatchGrid.ItemsSource = basket;
         DocumentPreview.CommandBindings.Add(new CommandBinding(ApplicationCommands.Print, (_, e) => { PrintClick(this, e); e.Handled = true; }));
@@ -144,8 +139,8 @@ public partial class MainWindow : Window
         var area = SystemParameters.WorkArea;
         MaxWidth = area.Width;
         MaxHeight = area.Height;
-        Width = Math.Min(1100, area.Width);
-        Height = Math.Min(720, area.Height);
+        Width = Math.Min(1280, area.Width);
+        Height = Math.Min(780, area.Height);
         Left = area.Left + Math.Max(0, (area.Width - Width) / 2);
         Top = area.Top + Math.Max(0, (area.Height - Height) / 2);
     }
@@ -586,17 +581,12 @@ public partial class MainWindow : Window
     private void BindEditor()
     {
         previewTimer.Stop();
-        TemplateFields.DataContext = editing; ElementsGrid.ItemsSource = editing?.Elements;
-        if (editing is not null) RenderEditorPreviewSafely();
+        BindDesigner();
     }
     private void CommitEditor()
     {
-        ElementsGrid.CommitEdit(DataGridEditingUnit.Cell, true);
-        ElementsGrid.CommitEdit(DataGridEditingUnit.Row, true);
-        Keyboard.ClearFocus();
+        Keyboard.ClearFocus(); 
         if (editing is null) throw new InvalidOperationException("Crie ou selecione um modelo.");
-        if (HasValidationError(TemplateFields) || HasValidationError(ElementsGrid))
-            throw new InvalidOperationException("Corrija os campos numéricos destacados antes de salvar.");
         PlateRules.ValidateTemplate(editing);
     }
     private static bool HasValidationError(DependencyObject parent)
@@ -615,31 +605,6 @@ public partial class MainWindow : Window
         previewTimer.Stop();
         previewTimer.Start();
     }
-    private void RenderEditorPreviewSafely()
-    {
-        if (editing is null) return;
-        if (HasValidationError(TemplateFields) || HasValidationError(ElementsGrid))
-        {
-            PreviewStatus.Text = "Revise os valores inválidos para atualizar a prévia.";
-            return;
-        }
-        try
-        {
-            PlateRules.ValidateTemplate(editing);
-            var plate = renderer.Plate(editing, Example(), placeholders: true);
-            TemplatePreview.Child = plate;
-            PreviewStatus.Text = "Prévia atualizada automaticamente. Clique em Salvar layout para guardar as alterações.";
-        }
-        catch (Exception ex) when (ex is InvalidOperationException or FormatException)
-        {
-            PreviewStatus.Text = "Prévia: " + ex.Message;
-        }
-    }
-    private void UpdateTemplatePreview()
-    {
-        CommitEditor();
-        RenderEditorPreviewSafely();
-    }
     private void NewTemplateClick(object sender, RoutedEventArgs e) { editing = PlateTemplate.Default(); editing.Name = "Novo layout"; BindEditor(); }
     private void DuplicateTemplateClick(object sender, RoutedEventArgs e) => Run(() =>
     {
@@ -647,15 +612,14 @@ public partial class MainWindow : Window
     });
     private void SaveTemplateClick(object sender, RoutedEventArgs e) => Run(() =>
     {
-        CommitEditor(); UpdateTemplatePreview(); store.SaveTemplate(editing!); var id = editing!.Id;
+        CommitEditor(); store.SaveTemplate(editing!); var id = editing!.Id;
         RefreshTemplates(id); InvalidatePreview(); Status.Text = "Layout salvo. Ele pode ser aplicado a todos os produtos do lote.";
     });
     private void DeleteTemplateClick(object sender, RoutedEventArgs e) => Run(() =>
     {
         if (editing is null) return;
         if (MessageBox.Show(this, $"Excluir o layout '{editing.Name}'? O histórico será preservado.", "Excluir layout", MessageBoxButton.YesNo) != MessageBoxResult.Yes) return;
-        store.DeleteTemplate(editing.Id); editing = null; TemplateFields.DataContext = null;
-        ElementsGrid.ItemsSource = null; TemplatePreview.Child = null; RefreshTemplates(); InvalidatePreview();
+        store.DeleteTemplate(editing.Id); editing = null; BindDesigner(); RefreshTemplates(); InvalidatePreview();
     });
     private void ExportTemplateClick(object sender, RoutedEventArgs e) => Run(() =>
     {
@@ -671,19 +635,6 @@ public partial class MainWindow : Window
         PlateRules.ValidateTemplate(template); template.Id = Guid.NewGuid().ToString("N");
         store.SaveTemplate(template); RefreshTemplates(template.Id);
     });
-    private void AddElementClick(object sender, RoutedEventArgs e) => Run(() =>
-    {
-        if (editing is null) return;
-        editing.Elements.Add(new() { Text = "Novo texto", X = 0, Y = 0, Width = Math.Min(60, editing.WidthMm), Height = 15, FontSize = 15 });
-        ElementsGrid.Items.Refresh(); QueueEditorPreview();
-    });
-    private void RemoveElementClick(object sender, RoutedEventArgs e)
-    {
-        var elements = ElementsGrid.SelectedItems.OfType<PlateElement>().ToList();
-        if (elements.Count == 0 || editing is null) return;
-        foreach (var element in elements) editing.Elements.Remove(element);
-        ElementsGrid.Items.Refresh(); QueueEditorPreview();
-    }
     private void AddImageElementClick(object sender, RoutedEventArgs e)
     {
         if (sender is not Button button || button.ContextMenu is null) return;
@@ -693,7 +644,7 @@ public partial class MainWindow : Window
     }
     private void RequireEditingTemplate()
     {
-        if (editing is null) throw new InvalidOperationException("Abra ou crie um layout antes de inserir uma imagem.");
+        if (editing is null) throw new InvalidOperationException("Abra ou crie um layout antes de adicionar elementos.");
     }
     private static double AspectOf(byte[]? bytes)
         => ToBitmap(bytes) is { PixelHeight: > 0 } bitmap ? (double)bitmap.PixelWidth / bitmap.PixelHeight : 1;
@@ -708,10 +659,8 @@ public partial class MainWindow : Window
             IsImage = true, Text = "", ImageId = imageId, X = 5, Y = 5, Background = "#00FFFFFF",
             Width = Math.Max(1, Math.Round(width, 1)), Height = Math.Max(1, Math.Round(height, 1))
         };
-        editing.Elements.Add(element);
-        ElementsGrid.Items.Refresh(); ElementsGrid.SelectedItem = element; ElementsGrid.ScrollIntoView(element);
-        QueueEditorPreview();
-        Status.Text = "Imagem inserida no layout. Ajuste X, Y, Larg. e Alt. na lista; ela fica ao fundo e os textos aparecem por cima.";
+        AddElement(element);
+        PreviewStatus.Text = "Imagem inserida no layout: arraste para posicionar. Ela fica ao fundo e os textos aparecem por cima.";
     }
     private void InsertImageFromFileClick(object sender, RoutedEventArgs e) => Run(() =>
     {
@@ -732,7 +681,6 @@ public partial class MainWindow : Window
     private void InsertProductImageSlotClick(object sender, RoutedEventArgs e) => Run(() => AddImageElement(ImageSources.Product));
     private void InsertFamilyImageSlotClick(object sender, RoutedEventArgs e) => Run(() => AddImageElement(ImageSources.Family));
     private void InsertProductOrFamilySlotClick(object sender, RoutedEventArgs e) => Run(() => AddImageElement(ImageSources.ProductOrFamily));
-    private void TemplatePreviewClick(object sender, RoutedEventArgs e) => Run(UpdateTemplatePreview);
 
     internal static System.Windows.Media.Imaging.BitmapImage? ToBitmap(byte[]? bytes, int decodeWidth = 0)
     {
@@ -760,14 +708,13 @@ public partial class MainWindow : Window
             new(ImageSources.Family, "(imagem da família)"),
             new(ImageSources.ProductOrFamily, "(do produto; se não houver, da família)"),
             .. infos.Select(x => new ImageChoice(x.Id, x.Name))];
-        ImageColumn.ItemsSource = imageChoices;
+        RefreshInspectorImageChoices();
     }
     private void NotifyImagesChanged()
     {
         renderer.ClearImageCache(); RefreshImages(); RefreshProducts(); InvalidatePreview(); QueueEditorPreview();
     }
 
-    // Lê o arquivo, reduz e grava na biblioteca. Arquivo idêntico a um já existente reaproveita o registro.
     private string AddImageFile(string path, string? name = null)
     {
         var info = new FileInfo(path);
@@ -959,19 +906,6 @@ public partial class MainWindow : Window
     }
 
     private static List<FontChoice>? fontChoices;
-
-    private void PickFontClick(object sender, RoutedEventArgs e) => Run(() =>
-    {
-        if (sender is not Button button || button.DataContext is not PlateElement element) return;
-        var chosen = PickFontDialog(element.FontFamily);
-        if (chosen is null) return;
-        var targets = ElementsGrid.SelectedItems.Contains(element)
-            ? ElementsGrid.SelectedItems.OfType<PlateElement>().ToList()
-            : new List<PlateElement> { element };
-        foreach (var target in targets) target.FontFamily = chosen;
-        ElementsGrid.Items.Refresh(); QueueEditorPreview();
-        Status.Text = $"Tipo de letra \"{chosen}\" aplicado a {targets.Count} elemento(s).";
-    });
 
     private string? PickFontDialog(string? current)
     {

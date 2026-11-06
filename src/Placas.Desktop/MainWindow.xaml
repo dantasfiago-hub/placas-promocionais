@@ -129,27 +129,54 @@
         </DockPanel>
       </TabItem>
       <TabItem Header="2. Layouts salvos">
-        <DockPanel Margin="12">
-          <WrapPanel DockPanel.Dock="Top">
-            <ComboBox x:Name="TemplatesBox" Width="240" DisplayMemberPath="Name" SelectionChanged="TemplateChanged"/>
-            <Button Content="Novo" Click="NewTemplateClick"/><Button Content="Duplicar" Click="DuplicateTemplateClick"/>
-            <Button Content="Salvar layout" Click="SaveTemplateClick"/><Button Style="{StaticResource DangerButton}" Content="Excluir" Click="DeleteTemplateClick"/>
-            <Button Content="Exportar JSON" Click="ExportTemplateClick"/><Button Content="Importar JSON" Click="ImportTemplateClick"/>
-          </WrapPanel>
-          <StackPanel DockPanel.Dock="Top" x:Name="TemplateFields">
-            <WrapPanel Margin="0,8">
-              <TextBlock Text="Nome" VerticalAlignment="Center"/><TextBox Text="{Binding Name}" Width="230"/>
-              <TextBlock Text="Largura mm" VerticalAlignment="Center"/><TextBox Text="{Binding WidthMm}" Width="65"/>
-              <TextBlock Text="Altura mm" VerticalAlignment="Center"/><TextBox Text="{Binding HeightMm}" Width="65"/>
-              <TextBlock Text="Fundo" VerticalAlignment="Center"/><TextBox Text="{Binding Background}" Width="110"/>
+        <DockPanel Margin="8">
+          <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+            <WrapPanel DockPanel.Dock="Left">
+              <TextBlock Text="Layout:" Style="{StaticResource GroupLabel}"/>
+              <ComboBox x:Name="TemplatesBox" Width="240" DisplayMemberPath="Name" SelectionChanged="TemplateChanged"/>
+              <Button Content="Novo" Click="NewTemplateClick"/>
+              <Button Content="Duplicar" Click="DuplicateTemplateClick"/>
+              <Button Style="{StaticResource PrimaryButton}" Content="Salvar layout" Click="SaveTemplateClick"/>
+              <Button Style="{StaticResource DangerButton}" Content="Excluir" Click="DeleteTemplateClick"/>
+              <Button Content="Exportar JSON" Click="ExportTemplateClick"/>
+              <Button Content="Importar JSON" Click="ImportTemplateClick"/>
             </WrapPanel>
-            <TextBlock Text="Campos: {descricao}  {codigo}  {preco}  {preco_normal}  {validade}  {condicao}  {quantidade}  {familia}  {subdescricao}  {descricao_familia}" Margin="4,4,0,8"/>
-            <TextBlock x:Name="PreviewStatus" Text="Prévia automática ativada. Alterações são mostradas conforme você edita." Foreground="#526172" Margin="4,0,0,8"/>
-          </StackPanel>
+            <TextBlock x:Name="PreviewStatus" VerticalAlignment="Center" Margin="12,0,0,0" Foreground="#526172" TextTrimming="CharacterEllipsis" Text="Selecione ou crie um layout."/>
+          </DockPanel>
           <Grid>
-            <Grid.ColumnDefinitions><ColumnDefinition Width="3*"/><ColumnDefinition Width="2*"/></Grid.ColumnDefinitions>
-            <DockPanel Margin="0,0,12,0">
-              <WrapPanel DockPanel.Dock="Bottom"><Button Content="Adicionar elemento" Click="AddElementClick"/><Button Content="Adicionar imagem ▾" Click="AddImageElementClick" ToolTip="Insere uma imagem no layout: do computador, da biblioteca, ou um espaço para a imagem do produto ou da família. Imagens ficam ao fundo (os textos aparecem por cima).">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="66"/>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="320"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Ferramentas -->
+            <Border Grid.Column="0" Background="#F3F5F8" BorderBrush="#D5DBE3" BorderThickness="1" CornerRadius="4" Margin="0,0,6,0">
+              <StackPanel Margin="3">
+                <Button Click="AddTextElementClick" Height="54" ToolTip="Adicionar caixa de texto">
+                  <StackPanel><TextBlock Text="T" FontSize="20" FontWeight="Bold" HorizontalAlignment="Center"/><TextBlock Text="Texto" FontSize="10" HorizontalAlignment="Center"/></StackPanel>
+                </Button>
+                <Button Click="AddFieldElementClick" Height="54" ToolTip="Adicionar um campo do produto (descrição, preço, validade...)">
+                  <StackPanel><TextBlock Text="#" FontSize="20" FontWeight="Bold" HorizontalAlignment="Center"/><TextBlock Text="Campo" FontSize="10" HorizontalAlignment="Center"/></StackPanel>
+                  <Button.ContextMenu>
+                    <ContextMenu>
+                      <MenuItem Header="Descrição do produto" Tag="descricao" Click="AddFieldItemClick"/>
+                      <MenuItem Header="Subdescrição" Tag="subdescricao" Click="AddFieldItemClick"/>
+                      <MenuItem Header="Preço" Tag="preco" Click="AddFieldItemClick"/>
+                      <MenuItem Header="Preço normal (De ...)" Tag="preco_normal" Click="AddFieldItemClick"/>
+                      <MenuItem Header="Validade (até)" Tag="validade" Click="AddFieldItemClick"/>
+                      <MenuItem Header="Início da oferta" Tag="inicio" Click="AddFieldItemClick"/>
+                      <MenuItem Header="Condição (ex.: 3 unidades por ...)" Tag="condicao" Click="AddFieldItemClick"/>
+                      <MenuItem Header="Quantidade" Tag="quantidade" Click="AddFieldItemClick"/>
+                      <MenuItem Header="Código" Tag="codigo" Click="AddFieldItemClick"/>
+                      <Separator/>
+                      <MenuItem Header="Família (código)" Tag="familia" Click="AddFieldItemClick"/>
+                      <MenuItem Header="Descrição da família" Tag="descricao_familia" Click="AddFieldItemClick"/>
+                    </ContextMenu>
+                  </Button.ContextMenu>
+                </Button>
+                <Button Click="AddImageElementClick" Height="54" ToolTip="Inserir imagem: do computador, da biblioteca, ou espaço para a imagem do produto ou da família. Imagens ficam ao fundo.">
+                  <StackPanel><TextBlock Text="▣" FontSize="20" HorizontalAlignment="Center"/><TextBlock Text="Imagem" FontSize="10" HorizontalAlignment="Center"/></StackPanel>
                   <Button.ContextMenu>
                     <ContextMenu>
                       <MenuItem Header="Inserir imagem do computador…" Click="InsertImageFromFileClick"/>
@@ -157,37 +184,176 @@
                       <Separator/>
                       <MenuItem Header="Espaço para a imagem do produto" Click="InsertProductImageSlotClick"/>
                       <MenuItem Header="Espaço para a imagem da família" Click="InsertFamilyImageSlotClick"/>
-                      <MenuItem Header="Espaço para a imagem do produto (ou da família, se não houver)" Click="InsertProductOrFamilySlotClick"/>
+                      <MenuItem Header="Espaço para imagem do produto (ou da família, se não houver)" Click="InsertProductOrFamilySlotClick"/>
                     </ContextMenu>
                   </Button.ContextMenu>
-                </Button><Button Style="{StaticResource DangerButton}" Content="Remover elementos" Click="RemoveElementClick" ToolTip="Remove os elementos selecionados na lista (Ctrl/Shift+clique para vários)"/><Button Content="Atualizar prévia" Click="TemplatePreviewClick"/></WrapPanel>
-              <DataGrid x:Name="ElementsGrid" CanUserDeleteRows="False">
-                <DataGrid.Columns>
-                  <DataGridTextColumn Header="Texto / campo" Binding="{Binding Text, UpdateSourceTrigger=PropertyChanged}" Width="170"/>
-                  <DataGridTextColumn Header="X" Binding="{Binding X, UpdateSourceTrigger=PropertyChanged}" Width="45"/><DataGridTextColumn Header="Y" Binding="{Binding Y, UpdateSourceTrigger=PropertyChanged}" Width="45"/>
-                  <DataGridTextColumn Header="Larg." Binding="{Binding Width, UpdateSourceTrigger=PropertyChanged}" Width="50"/><DataGridTextColumn Header="Alt." Binding="{Binding Height, UpdateSourceTrigger=PropertyChanged}" Width="50"/>
-                  <DataGridTextColumn Header="Fonte" Binding="{Binding FontSize, UpdateSourceTrigger=PropertyChanged}" Width="50"/><DataGridTextColumn Header="Mín." Binding="{Binding MinFontSize, UpdateSourceTrigger=PropertyChanged}" Width="50"/>
-                  <DataGridTemplateColumn Header="Tipo de letra" Width="180" SortMemberPath="FontFamily">
-                    <DataGridTemplateColumn.CellTemplate>
-                      <DataTemplate>
-                        <Button Click="PickFontClick" Margin="2" Padding="6,1" HorizontalContentAlignment="Stretch" ToolTip="Clique para escolher o tipo de letra. Com vários elementos selecionados, vale para todos.">
+                </Button>
+                <Separator Margin="0,8"/>
+                <Button Click="DuplicateElementClick" Height="46" ToolTip="Duplicar o elemento selecionado (Ctrl+D)">
+                  <StackPanel><TextBlock Text="⧉" FontSize="16" HorizontalAlignment="Center"/><TextBlock Text="Duplicar" FontSize="10" HorizontalAlignment="Center"/></StackPanel>
+                </Button>
+                <Button Style="{StaticResource DangerButton}" Click="DeleteElementClick" Height="46" ToolTip="Excluir o elemento selecionado (Delete)">
+                  <StackPanel><TextBlock Text="✕" FontSize="16" HorizontalAlignment="Center"/><TextBlock Text="Excluir" FontSize="10" HorizontalAlignment="Center"/></StackPanel>
+                </Button>
+              </StackPanel>
+            </Border>
+
+            <Grid Grid.Column="1">
+              <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+              <Border Background="#F3F5F8" BorderBrush="#D5DBE3" BorderThickness="1,1,1,0" CornerRadius="4,4,0,0" Padding="6,3">
+                <DockPanel>
+                  <TextBlock x:Name="SelectionReadout" DockPanel.Dock="Right" VerticalAlignment="Center" Foreground="#526172" Margin="8,0,0,0"/>
+                  <WrapPanel>
+                    <Button x:Name="UndoButton" Content="↶ Desfazer" Click="UndoClick" ToolTip="Desfazer (Ctrl+Z)"/>
+                    <Button x:Name="RedoButton" Content="↷ Refazer" Click="RedoClick" ToolTip="Refazer (Ctrl+Y)"/>
+                    <Border Width="1" Background="#D5DBE3" Margin="8,3"/>
+                    <Button Content="−" Width="30" Click="ZoomOutClick" ToolTip="Diminuir zoom (Ctrl + roda do mouse)"/>
+                    <TextBlock x:Name="ZoomText" Text="100%" Width="50" TextAlignment="Center" VerticalAlignment="Center"/>
+                    <Button Content="+" Width="30" Click="ZoomInClick" ToolTip="Aumentar zoom (Ctrl + roda do mouse)"/>
+                    <Button Content="Ajustar" Click="ZoomFitClick" ToolTip="Ajusta a placa à área visível"/>
+                    <Button Content="100%" Click="Zoom100Click"/>
+                    <CheckBox x:Name="SnapCheck" Content="Ímãs" IsChecked="True" VerticalAlignment="Center" Margin="14,0,0,0" ToolTip="Alinha às bordas e ao centro da placa e aos outros elementos (mostra guias rosa)"/>
+                    <CheckBox x:Name="GridCheck" Content="Grade" VerticalAlignment="Center" Margin="10,0,0,0" ToolTip="Mostra uma grade de 5 mm" Checked="GridToggled" Unchecked="GridToggled"/>
+                  </WrapPanel>
+                </DockPanel>
+              </Border>
+              <ScrollViewer x:Name="DesignScroll" Grid.Row="1" Background="#CBD2DB" Focusable="True" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" PreviewMouseWheel="DesignWheel" PreviewKeyDown="DesignKeyDown" SizeChanged="DesignScrollSizeChanged">
+                <Border x:Name="PlateBorder" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="48" BorderBrush="#7C8794" BorderThickness="1" Background="White">
+                  <Border.LayoutTransform><ScaleTransform x:Name="ZoomTransform" ScaleX="1" ScaleY="1"/></Border.LayoutTransform>
+                  <Grid>
+                    <Canvas x:Name="PlateLayer" ClipToBounds="True"/>
+                    <Canvas x:Name="OverlayLayer" Background="Transparent" MouseLeftButtonDown="OverlayBackgroundDown"/>
+                  </Grid>
+                </Border>
+              </ScrollViewer>
+            </Grid>
+
+            <Border Grid.Column="2" Margin="6,0,0,0" Background="#F3F5F8" BorderBrush="#D5DBE3" BorderThickness="1" CornerRadius="4">
+              <Grid>
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="*"/>
+                  <RowDefinition Height="5"/>
+                  <RowDefinition Height="190"/>
+                </Grid.RowDefinitions>
+                <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
+                  <StackPanel Margin="10">
+                    <TextBlock x:Name="InspectorTitle" Text="Placa" FontSize="15" FontWeight="Bold" Foreground="#102C46" Margin="0,0,0,8"/>
+
+                    <StackPanel x:Name="PlatePanel">
+                      <TextBlock Text="Nome do layout" FontSize="11" Foreground="#526172"/>
+                      <TextBox x:Name="PlateNameBox" TextChanged="PlateNameChanged"/>
+                      <Grid Margin="0,6,0,0">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <StackPanel><TextBlock Text="Largura (mm)" FontSize="11" Foreground="#526172"/><TextBox x:Name="PlateWidthBox" LostFocus="NumericBoxCommit" KeyDown="NumericBoxKeyDown"/></StackPanel>
+                        <StackPanel Grid.Column="1"><TextBlock Text="Altura (mm)" FontSize="11" Foreground="#526172"/><TextBox x:Name="PlateHeightBox" LostFocus="NumericBoxCommit" KeyDown="NumericBoxKeyDown"/></StackPanel>
+                      </Grid>
+                      <TextBlock Text="Cor de fundo da placa" FontSize="11" Foreground="#526172" Margin="0,6,0,0"/>
+                      <StackPanel Orientation="Horizontal">
+                        <Button x:Name="PlateColorButton" Tag="plate" Width="34" Height="24" Click="PickColorClick" ToolTip="Escolher cor"/>
+                        <TextBox x:Name="PlateColorBox" Tag="plate" Width="100" LostFocus="ColorBoxCommit" KeyDown="ColorBoxKeyDown"/>
+                      </StackPanel>
+                      <TextBlock Margin="0,12,0,0" TextWrapping="Wrap" Foreground="#6B7785" FontSize="11" Text="Clique em um elemento para editar. Arraste para mover, use as alças para redimensionar, setas para ajustar (Shift = 5 mm, Ctrl = 0,1 mm). Imagens ficam sempre ao fundo."/>
+                    </StackPanel>
+
+                    <StackPanel x:Name="ElementPanel" Visibility="Collapsed">
+                      <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                        <TextBlock Text="X (mm)" FontSize="11" Foreground="#526172"/>
+                        <TextBlock Grid.Column="1" Text="Y (mm)" FontSize="11" Foreground="#526172"/>
+                        <TextBox x:Name="PosXBox" Grid.Row="1" LostFocus="NumericBoxCommit" KeyDown="NumericBoxKeyDown"/>
+                        <TextBox x:Name="PosYBox" Grid.Row="1" Grid.Column="1" LostFocus="NumericBoxCommit" KeyDown="NumericBoxKeyDown"/>
+                        <TextBlock Grid.Row="2" Text="Largura (mm)" FontSize="11" Foreground="#526172"/>
+                        <TextBlock Grid.Row="2" Grid.Column="1" Text="Altura (mm)" FontSize="11" Foreground="#526172"/>
+                        <TextBox x:Name="WidthBox" Grid.Row="3" LostFocus="NumericBoxCommit" KeyDown="NumericBoxKeyDown"/>
+                        <TextBox x:Name="HeightBox" Grid.Row="3" Grid.Column="1" LostFocus="NumericBoxCommit" KeyDown="NumericBoxKeyDown"/>
+                      </Grid>
+
+                      <StackPanel x:Name="TextPanel" Margin="0,8,0,0">
+                        <TextBlock Text="Texto" FontSize="11" Foreground="#526172"/>
+                        <TextBox x:Name="TextContentBox" TextChanged="TextContentChanged"/>
+                        <TextBlock x:Name="TextHint" Foreground="#B42318" FontSize="11" TextWrapping="Wrap"/>
+                        <ComboBox x:Name="FieldInsertBox" SelectionChanged="FieldInsertChanged" ToolTip="Insere um campo do produto na posição do cursor">
+                          <ComboBoxItem Content="Inserir campo…" IsSelected="True"/>
+                          <ComboBoxItem Content="Descrição" Tag="descricao"/>
+                          <ComboBoxItem Content="Subdescrição" Tag="subdescricao"/>
+                          <ComboBoxItem Content="Preço" Tag="preco"/>
+                          <ComboBoxItem Content="Preço normal" Tag="preco_normal"/>
+                          <ComboBoxItem Content="Validade" Tag="validade"/>
+                          <ComboBoxItem Content="Validade (dd/MM)" Tag="validade_curta"/>
+                          <ComboBoxItem Content="Início" Tag="inicio"/>
+                          <ComboBoxItem Content="Início (dd/MM)" Tag="inicio_curto"/>
+                          <ComboBoxItem Content="Condição" Tag="condicao"/>
+                          <ComboBoxItem Content="Quantidade" Tag="quantidade"/>
+                          <ComboBoxItem Content="Código" Tag="codigo"/>
+                          <ComboBoxItem Content="Família" Tag="familia"/>
+                          <ComboBoxItem Content="Descrição da família" Tag="descricao_familia"/>
+                        </ComboBox>
+                        <TextBlock Text="Tipo de letra" FontSize="11" Foreground="#526172" Margin="0,6,0,0"/>
+                        <Button x:Name="FontButton" Click="InspectorFontClick" HorizontalContentAlignment="Stretch" ToolTip="Escolher o tipo de letra (lista com busca)">
                           <DockPanel LastChildFill="True">
                             <TextBlock DockPanel.Dock="Right" Text="▾" Margin="6,0,0,0"/>
-                            <TextBlock Text="{Binding FontFamily}" TextTrimming="CharacterEllipsis"/>
+                            <TextBlock x:Name="FontButtonText" TextTrimming="CharacterEllipsis"/>
                           </DockPanel>
                         </Button>
+                        <Grid Margin="0,6,0,0">
+                          <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                          <StackPanel><TextBlock Text="Tamanho (pt)" FontSize="11" Foreground="#526172"/><TextBox x:Name="FontSizeBox" LostFocus="NumericBoxCommit" KeyDown="NumericBoxKeyDown"/></StackPanel>
+                          <StackPanel Grid.Column="1"><TextBlock Text="Mínimo (pt)" FontSize="11" Foreground="#526172" ToolTip="Menor tamanho ao encolher para caber"/><TextBox x:Name="MinFontBox" LostFocus="NumericBoxCommit" KeyDown="NumericBoxKeyDown"/></StackPanel>
+                        </Grid>
+                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                          <ToggleButton x:Name="BoldToggle" Content="N" FontWeight="Bold" Width="32" Height="26" Margin="3" Click="StyleToggleClick" ToolTip="Negrito"/>
+                          <ToggleButton x:Name="ItalicToggle" Content="I" FontStyle="Italic" Width="32" Height="26" Margin="3" Click="StyleToggleClick" ToolTip="Itálico"/>
+                          <Border Width="1" Background="#D5DBE3" Margin="6,3"/>
+                          <ToggleButton x:Name="AlignLeftToggle" Content="⇤" Tag="Left" Width="32" Height="26" Margin="3" Click="AlignClick" ToolTip="Alinhar à esquerda"/>
+                          <ToggleButton x:Name="AlignCenterToggle" Content="↔" Tag="Center" Width="32" Height="26" Margin="3" Click="AlignClick" ToolTip="Centralizar"/>
+                          <ToggleButton x:Name="AlignRightToggle" Content="⇥" Tag="Right" Width="32" Height="26" Margin="3" Click="AlignClick" ToolTip="Alinhar à direita"/>
+                        </StackPanel>
+                        <TextBlock Text="Cor do texto" FontSize="11" Foreground="#526172" Margin="0,6,0,0"/>
+                        <StackPanel Orientation="Horizontal">
+                          <Button x:Name="TextColorButton" Tag="text" Width="34" Height="24" Click="PickColorClick" ToolTip="Escolher cor"/>
+                          <TextBox x:Name="TextColorBox" Tag="text" Width="100" LostFocus="ColorBoxCommit" KeyDown="ColorBoxKeyDown"/>
+                        </StackPanel>
+                      </StackPanel>
+
+                      <StackPanel x:Name="ImagePanel" Margin="0,8,0,0" Visibility="Collapsed">
+                        <TextBlock Text="Imagem" FontSize="11" Foreground="#526172"/>
+                        <ComboBox x:Name="ImageSourceBox" DisplayMemberPath="Name" SelectedValuePath="Id" SelectionChanged="ImageSourceChanged" ToolTip="Imagem fixa da biblioteca ou espaço para a imagem do produto/família"/>
+                      </StackPanel>
+
+                      <TextBlock Text="Fundo do elemento" FontSize="11" Foreground="#526172" Margin="0,8,0,0"/>
+                      <StackPanel Orientation="Horizontal">
+                        <Button x:Name="BackColorButton" Tag="back" Width="34" Height="24" Click="PickColorClick" ToolTip="Escolher cor"/>
+                        <TextBox x:Name="BackColorBox" Tag="back" Width="100" LostFocus="ColorBoxCommit" KeyDown="ColorBoxKeyDown"/>
+                        <Button Content="Sem fundo" Click="ClearBackColorClick"/>
+                      </StackPanel>
+                    </StackPanel>
+                  </StackPanel>
+                </ScrollViewer>
+
+                <GridSplitter Grid.Row="1" Height="5" HorizontalAlignment="Stretch" Background="#D5DBE3" ResizeDirection="Rows"/>
+
+                <DockPanel Grid.Row="2" Margin="8,4,8,8">
+                  <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                      <Button Content="▲" Width="28" Click="LayerForwardClick" ToolTip="Trazer para frente"/>
+                      <Button Content="▼" Width="28" Click="LayerBackwardClick" ToolTip="Enviar para trás"/>
+                    </StackPanel>
+                    <TextBlock Text="Camadas" FontWeight="SemiBold" Foreground="#102C46" VerticalAlignment="Center"/>
+                  </DockPanel>
+                  <ListBox x:Name="LayersList" SelectionChanged="LayersSelectionChanged">
+                    <ListBox.ItemTemplate>
+                      <DataTemplate>
+                        <DockPanel>
+                          <TextBlock Text="{Binding Icon}" Width="22" FontWeight="Bold" Foreground="#0F766E"/>
+                          <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"/>
+                        </DockPanel>
                       </DataTemplate>
-                    </DataGridTemplateColumn.CellTemplate>
-                  </DataGridTemplateColumn>
-                  <DataGridTextColumn Header="Cor" Binding="{Binding Foreground, UpdateSourceTrigger=PropertyChanged}" Width="90"/><DataGridTextColumn Header="Fundo" Binding="{Binding Background, UpdateSourceTrigger=PropertyChanged}" Width="100"/>
-                  <DataGridCheckBoxColumn Header="Negrito" Binding="{Binding Bold, UpdateSourceTrigger=PropertyChanged}"/>
-                  <DataGridCheckBoxColumn Header="Itálico" Binding="{Binding Italic, UpdateSourceTrigger=PropertyChanged}"/>
-                  <DataGridCheckBoxColumn Header="Imagem?" Binding="{Binding IsImage, UpdateSourceTrigger=PropertyChanged}"/>
-                  <DataGridComboBoxColumn x:Name="ImageColumn" Header="Qual imagem" SelectedValueBinding="{Binding ImageId, UpdateSourceTrigger=PropertyChanged}" SelectedValuePath="Id" DisplayMemberPath="Name" Width="170"/>
-                </DataGrid.Columns>
-              </DataGrid>
-            </DockPanel>
-            <Border Grid.Column="1" Background="#DCE1E7" Padding="20"><Viewbox Stretch="Uniform" x:Name="TemplatePreview"/></Border>
+                    </ListBox.ItemTemplate>
+                  </ListBox>
+                </DockPanel>
+              </Grid>
+            </Border>
           </Grid>
         </DockPanel>
       </TabItem>

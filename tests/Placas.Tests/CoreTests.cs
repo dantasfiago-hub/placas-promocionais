@@ -646,4 +646,16 @@ public class CoreTests
         var json = """{"SchemaVersion":1,"Name":"Antigo","WidthMm":95,"HeightMm":135,"Background":"#FFF03B","Elements":[{"Text":"{descricao}","X":5,"Y":30,"Width":90,"Height":30,"FontSize":24,"MinFontSize":9,"Foreground":"#111827","Background":"#00FFFFFF","Bold":true}]}""";
         Assert.Equal("Segoe UI", System.Text.Json.JsonSerializer.Deserialize<PlateTemplate>(json)!.Elements[0].FontFamily);
     }
+
+    [Fact] public void TextAlignDefaultsToCenterAndOldTemplatesKeepIt()
+    {
+        Assert.All(PlateTemplate.Default().Elements, e => Assert.Equal("Center", e.TextAlign));
+        var json = """{"SchemaVersion":1,"Name":"Antigo","WidthMm":95,"HeightMm":135,"Background":"#FFF03B","Elements":[{"Text":"{descricao}","X":5,"Y":30,"Width":90,"Height":30,"FontSize":24,"MinFontSize":9,"Foreground":"#111827","Background":"#00FFFFFF","Bold":true}]}""";
+        var template = System.Text.Json.JsonSerializer.Deserialize<PlateTemplate>(json)!;
+        Assert.Equal("Center", template.Elements[0].TextAlign);
+        template.Elements[0].TextAlign = "Left";
+        var copy = System.Text.Json.JsonSerializer.Deserialize<PlateTemplate>(System.Text.Json.JsonSerializer.Serialize(template))!;
+        Assert.Equal("Left", copy.Elements[0].TextAlign); // o alinhamento sobrevive a salvar/duplicar/desfazer
+        PlateRules.ValidateTemplate(copy);
+    }
 }

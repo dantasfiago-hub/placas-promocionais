@@ -16,7 +16,6 @@ public static class ProductCode
 
 public static class FamilyCode
 {
-    // Chave de comparação: "012" e "12" são a mesma família; códigos com letras ignoram caixa.
     public static string Key(string raw)
     {
         var value = raw.Trim();
@@ -28,16 +27,14 @@ public static class FamilyCode
 
 public sealed record FamilyInfo(string Code, string Description);
 
-// Valores especiais de PlateElement.ImageId. Qualquer outro valor é o id de uma imagem fixa da biblioteca.
 public static class ImageSources
 {
-    public const string Product = "";                       // imagem vinculada ao produto
-    public const string Family = "@familia";                // imagem vinculada à família do produto
-    public const string ProductOrFamily = "@produto-familia"; // a do produto; se não houver, a da família
+    public const string Product = "";                       
+    public const string Family = "@familia";                
+    public const string ProductOrFamily = "@produto-familia"; 
     public static bool IsDynamic(string? source) => string.IsNullOrWhiteSpace(source) || source.StartsWith('@');
 }
 
-// Imagem da biblioteca (logo, foto de produto...). Thumbnail é uma miniatura pequena para listas.
 public sealed record ImageInfo(string Id, string Name, int Bytes, byte[] Thumbnail, int ProductCount, int LayoutCount, int FamilyCount = 0);
 
 public enum SourceKind { Catalog, Offer, Promotion }
@@ -71,9 +68,8 @@ public sealed class PlateElement
     public string Background { get; set; } = "#00FFFFFF";
     public bool Bold { get; set; } = true;
     public bool Italic { get; set; } = false;
-    // Tipo de letra instalado no Windows (ex.: "Franklin Gothic Demi"). Se não existir, o WPF usa uma fonte padrão.
     public string FontFamily { get; set; } = "Segoe UI";
-    // Elemento de imagem: ImageId = ImageSources.* (produto/família, vindo do item) ou o id de uma imagem fixa da biblioteca (ex.: logo).
+    public string TextAlign { get; set; } = "Center";
     public bool IsImage { get; set; } = false;
     public string ImageId { get; set; } = ""; 
 }
