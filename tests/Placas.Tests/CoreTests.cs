@@ -670,4 +670,61 @@ public class CoreTests
         Assert.Equal("Left", copy.Elements[0].TextAlign); // o alinhamento sobrevive a salvar/duplicar/desfazer
         PlateRules.ValidateTemplate(copy);
     }
+
+    [Fact] public void TextFormattingAppliesOnlyToSelectedCharactersAndMergesRuns()
+    {
+        var existing = new PlateTextStyle { Start = 1, Length = 3, Bold = true };
+        var styles = PlateTextFormatting.Apply([existing], 5, 2, 3, style => style.Foreground = "#FF0000");
+
+        Assert.Collection(styles,
+            style => { Assert.Equal(1, style.Start); Assert.Equal(1, style.Length); Assert.True(style.Bold); },
+            style => { Assert.Equal(2, style.Start); Assert.Equal(2, style.Length); Assert.True(style.Bold); Assert.Equal("#FF0000", style.Foreground); },
+            style => { Assert.Equal(4, style.Start); Assert.Equal(1, style.Length); Assert.Equal("#FF0000", style.Foreground); });
+    }
+
+    [Fact] public void WholeElementFormattingClearsOnlyMatchingRunOverrides()
+    {
+        var styles = PlateTextFormatting.Clear(
+            [new PlateTextStyle { Start = 0, Length = 3, FontFamily = "Arial", Bold = true }],
+            style => style.FontFamily = null);
+
+        var remaining = Assert.Single(styles);
+        Assert.Null(remaining.FontFamily);
+        Assert.True(remaining.Bold);
+    }
+
+    [Fact] public void TextFormattingTracksInsertedTextAndSurvivesTemplateSerialization()
+    {
+        var styles = PlateTextFormatting.Remap(
+            [new PlateTextStyle { Start = 1, Length = 3, Italic = true }], "abcde", "abXcde");
+        Assert.Equal(4, Assert.Single(styles).Length);
+
+        var template = PlateTemplate.Default();
+        template.Elements[0].Text = "Oferta {preco}";
+        template.Elements[0].TextStyles = PlateTextFormatting.Apply([], template.Elements[0].Text.Length, 7, 7,
+            style => { style.FontFamily = "Arial"; style.FontSize = 18; style.Underline = true; });
+        var copy = System.Text.Json.JsonSerializer.Deserialize<PlateTemplate>(
+            System.Text.Json.JsonSerializer.Serialize(template))!;
+
+        Assert.Equal("Arial", Assert.Single(copy.Elements[0].TextStyles).FontFamily);
+        Assert.Equal(18, copy.Elements[0].TextStyles[0].FontSize);
+        Assert.True(copy.Elements[0].TextStyles[0].Underline);
+        PlateRules.ValidateTemplate(copy);
+    }
+
+    [Fact] public void ShapeElementsAreValidatedAndPersisted()
+    {
+        var template = PlateTemplate.Default();
+        template.Elements[0] = new PlateElement
+        {
+            Shape = PlateShapes.Arrow, Width = 25, Height = 12, Background = "#FFFF00",
+            Foreground = "#111111", StrokeWidth = 0.8
+        };
+        PlateRules.ValidateTemplate(template);
+
+        var copy = System.Text.Json.JsonSerializer.Deserialize<PlateTemplate>(
+            System.Text.Json.JsonSerializer.Serialize(template))!;
+        Assert.Equal(PlateShapes.Arrow, copy.Elements[0].Shape);
+        Assert.Equal(0.8, copy.Elements[0].StrokeWidth);
+    }
 }

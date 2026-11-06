@@ -30,5 +30,8 @@ Build automatizado não comprova comportamento do driver ou saída física. Exec
 26. Selecionar um elemento, alterar Rotação (graus), salvar o layout e conferir que o ângulo permanece após fechar e reabrir, inclusive na prévia de impressão.
 27. Conferir as réguas em milímetros no topo e à esquerda da placa; seus valores devem acompanhar zoom, ajuste à tela e rolagem.
 28. Conferir que os ícones de zoom e de ordenação de camadas aparecem e respondem ao clique.
+29. Redimensionar textos e imagens arrastando as alças para aumentar e diminuir; a fonte deve acompanhar a caixa de texto, e as dimensões dos elementos não devem ser editáveis por campos numéricos.
+30. Inserir cada forma, redimensionar, mover, mudar preenchimento/contorno, ordenar camadas, salvar e reabrir; verificar formas na prévia e no PDF.
+31. Selecionar parte de um texto e aplicar família, tamanho, cor, negrito, itálico e sublinhado; repetir sem seleção para aplicar ao elemento inteiro, incluindo formatação de campos como {preco}.
 
 Registrar versão do Windows, modelo/driver da impressora, papel, resultado e eventuais ajustes necessários.

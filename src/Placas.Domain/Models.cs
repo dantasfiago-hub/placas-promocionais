@@ -55,6 +55,157 @@ public sealed record PrintBatch(string Id, DateTimeOffset CreatedAt, DateOnly Sa
     PlateTemplate Template, List<PrintItem> Items);
 public sealed record HistoryEntry(string Id, string CreatedAt, string Status, string Detail, PrintBatch Batch);
 
+public static class PlateShapes
+{
+    public const string Rectangle = "rectangle";
+    public const string Ellipse = "ellipse";
+    public const string Line = "line";
+    public const string Triangle = "triangle";
+    public const string Arrow = "arrow";
+    public const string Star = "star";
+
+    public static bool IsShape(string? shape) => shape is Rectangle or Ellipse or Line or Triangle or Arrow or Star;
+}
+
+public sealed class PlateTextStyle
+{
+    public int Start { get; set; }
+    public int Length { get; set; }
+    public string? FontFamily { get; set; }
+    public double? FontSize { get; set; }
+    public string? Foreground { get; set; }
+    public bool? Bold { get; set; }
+    public bool? Italic { get; set; }
+    public bool? Underline { get; set; }
+}
+
+public static class PlateTextFormatting
+{
+    public static List<PlateTextStyle> Apply(
+        IReadOnlyList<PlateTextStyle> styles, int textLength, int start, int length, Action<PlateTextStyle> change)
+    {
+        start = Math.Clamp(start, 0, textLength);
+        var end = Math.Clamp(start + length, start, textLength);
+        if (start == end) return styles.Select(Clone).ToList();
+
+        var boundaries = new SortedSet<int> { 0, textLength, start, end };
+        foreach (var style in styles)
+        {
+            boundaries.Add(Math.Clamp(style.Start, 0, textLength));
+            boundaries.Add(Math.Clamp(style.Start + style.Length, 0, textLength));
+        }
+
+        var points = boundaries.ToArray();
+        var result = new List<PlateTextStyle>();
+        for (var index = 0; index < points.Length - 1; index++)
+        {
+            var segmentStart = points[index];
+            var segmentEnd = points[index + 1];
+            if (segmentEnd <= segmentStart) continue;
+
+            var source = styles.FirstOrDefault(style =>
+                style.Start <= segmentStart && style.Start + style.Length >= segmentEnd);
+            var segment = source is null
+                ? new PlateTextStyle()
+                : Clone(source);
+            segment.Start = segmentStart;
+            segment.Length = segmentEnd - segmentStart;
+            if (segmentStart >= start && segmentEnd <= end) change(segment);
+            if (!HasOverrides(segment)) continue;
+            if (result.Count > 0 && result[^1].Start + result[^1].Length == segment.Start && SameStyle(result[^1], segment))
+                result[^1].Length += segment.Length;
+            else
+                result.Add(segment);
+        }
+        return result;
+    }
+
+    public static List<PlateTextStyle> Clear(
+        IReadOnlyList<PlateTextStyle> styles, Action<PlateTextStyle> clear)
+    {
+        var result = new List<PlateTextStyle>();
+        foreach (var style in styles.OrderBy(style => style.Start).Select(Clone))
+        {
+            clear(style);
+            if (!HasOverrides(style)) continue;
+            if (result.Count > 0 && result[^1].Start + result[^1].Length == style.Start && SameStyle(result[^1], style))
+                result[^1].Length += style.Length;
+            else
+                result.Add(style);
+        }
+        return result;
+    }
+
+    public static List<PlateTextStyle> Remap(
+        IReadOnlyList<PlateTextStyle> styles, string previousText, string updatedText)
+    {
+        var prefix = 0;
+        while (prefix < previousText.Length && prefix < updatedText.Length && previousText[prefix] == updatedText[prefix])
+            prefix++;
+
+        var suffix = 0;
+        while (suffix < previousText.Length - prefix && suffix < updatedText.Length - prefix &&
+               previousText[previousText.Length - 1 - suffix] == updatedText[updatedText.Length - 1 - suffix])
+            suffix++;
+
+        var previousEditEnd = previousText.Length - suffix;
+        var updatedEditEnd = updatedText.Length - suffix;
+        var delta = updatedEditEnd - previousEditEnd;
+        if (previousEditEnd == prefix && updatedEditEnd > prefix)
+        {
+            var inherited = styles.FirstOrDefault(style => style.Start < prefix && style.Start + style.Length >= prefix);
+            var result = styles.Select(Clone).ToList();
+            if (inherited is not null)
+            {
+                var matching = result.First(style => style.Start == inherited.Start && style.Length == inherited.Length);
+                matching.Length += updatedEditEnd - prefix;
+            }
+            foreach (var style in result.Where(style => inherited is null || style.Start != inherited.Start))
+                if (style.Start >= prefix) style.Start += delta;
+            return result;
+        }
+
+        var remapped = new List<PlateTextStyle>();
+        foreach (var style in styles)
+        {
+            var styleEnd = style.Start + style.Length;
+            if (style.Start < prefix)
+            {
+                var leftEnd = Math.Min(styleEnd, prefix);
+                if (leftEnd > style.Start)
+                {
+                    var left = Clone(style);
+                    left.Length = leftEnd - left.Start;
+                    remapped.Add(left);
+                }
+            }
+            if (styleEnd > previousEditEnd)
+            {
+                var rightStart = Math.Max(style.Start, previousEditEnd);
+                var right = Clone(style);
+                right.Start = rightStart + delta;
+                right.Length = styleEnd - rightStart;
+                remapped.Add(right);
+            }
+        }
+        return remapped.OrderBy(style => style.Start).ToList();
+    }
+
+    public static PlateTextStyle Clone(PlateTextStyle style) => new()
+    {
+        Start = style.Start, Length = style.Length, FontFamily = style.FontFamily, FontSize = style.FontSize,
+        Foreground = style.Foreground, Bold = style.Bold, Italic = style.Italic, Underline = style.Underline
+    };
+
+    private static bool HasOverrides(PlateTextStyle style) =>
+        style.FontFamily is not null || style.FontSize is not null || style.Foreground is not null ||
+        style.Bold is not null || style.Italic is not null || style.Underline is not null;
+
+    private static bool SameStyle(PlateTextStyle left, PlateTextStyle right) =>
+        left.FontFamily == right.FontFamily && left.FontSize == right.FontSize && left.Foreground == right.Foreground &&
+        left.Bold == right.Bold && left.Italic == right.Italic && left.Underline == right.Underline;
+}
+
 public sealed class PlateElement
 {
     public string Text { get; set; } = "{descricao}";
@@ -69,8 +220,12 @@ public sealed class PlateElement
     public string Background { get; set; } = "#00FFFFFF";
     public bool Bold { get; set; } = true;
     public bool Italic { get; set; } = false;
+    public bool Underline { get; set; }
     public string FontFamily { get; set; } = "Segoe UI";
     public string TextAlign { get; set; } = "Center";
+    public List<PlateTextStyle> TextStyles { get; set; } = [];
+    public string Shape { get; set; } = "";
+    public double StrokeWidth { get; set; } = 1;
     public bool IsImage { get; set; } = false;
     public string ImageId { get; set; } = ""; 
 }
@@ -116,11 +271,28 @@ public static class PlateRules
         ValidateColor(template.Background);
         foreach (var e in template.Elements)
         {
-            if (new[] { e.X, e.Y, e.Width, e.Height, e.RotationDegrees, e.FontSize, e.MinFontSize }.Any(x => !double.IsFinite(x)) ||
+            if (new[] { e.X, e.Y, e.Width, e.Height, e.RotationDegrees, e.FontSize, e.MinFontSize, e.StrokeWidth }.Any(x => !double.IsFinite(x)) ||
                 e.Width <= 0 || e.Height <= 0 || e.FontSize <= 0 || e.MinFontSize <= 0)
                 throw new InvalidOperationException("Largura, altura e tamanhos de fonte devem ser números maiores que zero.");
+            if (e.StrokeWidth < 0 || (!string.IsNullOrEmpty(e.Shape) && !PlateShapes.IsShape(e.Shape)))
+                throw new InvalidOperationException("Forma ou espessura de contorno inválida.");
+            if (e.IsImage && !string.IsNullOrEmpty(e.Shape))
+                throw new InvalidOperationException("Um elemento não pode ser imagem e forma ao mesmo tempo.");
+            if (e.TextStyles is null)
+                throw new InvalidOperationException("A formatação do texto está inválida.");
             ValidateColor(e.Foreground); ValidateColor(e.Background);
-            foreach (Match match in Regex.Matches(e.IsImage ? "" : e.Text ?? "", @"\{([^{}]+)\}"))
+            foreach (var style in e.TextStyles)
+            {
+                if (style.Start < 0 || style.Length <= 0 || style.Start + style.Length > (e.Text ?? "").Length ||
+                    style.FontSize is { } size && (!double.IsFinite(size) || size <= 0) ||
+                    style.FontFamily is not null && string.IsNullOrWhiteSpace(style.FontFamily))
+                    throw new InvalidOperationException("A formatação do texto contém um intervalo ou tamanho inválido.");
+                if (style.Foreground is not null) ValidateColor(style.Foreground);
+            }
+            if (e.TextStyles.OrderBy(style => style.Start).Zip(e.TextStyles.OrderBy(style => style.Start).Skip(1))
+                .Any(pair => pair.First.Start + pair.First.Length > pair.Second.Start))
+                throw new InvalidOperationException("Os intervalos de formatação do texto não podem se sobrepor.");
+            foreach (Match match in Regex.Matches(e.IsImage || !string.IsNullOrEmpty(e.Shape) ? "" : e.Text ?? "", @"\{([^{}]+)\}"))
                 if (!Tokens.Contains(match.Groups[1].Value))
                     throw new InvalidOperationException($"Campo desconhecido: {match.Value}");
         }
@@ -139,10 +311,11 @@ public static class PlateRules
             throw new InvalidOperationException($"{item.DisplayCode}: condição fora da validade em {saleDate:dd/MM/yyyy}.");
         if (item.Source == SourceKind.Promotion && item.Rule == QuantityRule.Pending)
             throw new InvalidOperationException($"{item.DisplayCode}: confirme a regra da promoção antes de imprimir.");
-        if (template.Elements.Any(x => !x.IsImage && x.Text.Contains("{preco_normal}")) &&
+        if (template.Elements.Any(x => !x.IsImage && string.IsNullOrEmpty(x.Shape) && x.Text.Contains("{preco_normal}")) &&
             (item.NormalPrice is null || item.NormalPrice <= item.Price))
             throw new InvalidOperationException($"{item.DisplayCode}: preço normal ausente ou menor/igual ao promocional.");
-        if (item.Quantity > 1 && !template.Elements.Any(x => !x.IsImage && (x.Text.Contains("{condicao}") || x.Text.Contains("{quantidade}"))))
+        if (item.Quantity > 1 && !template.Elements.Any(x => !x.IsImage && string.IsNullOrEmpty(x.Shape) &&
+            (x.Text.Contains("{condicao}") || x.Text.Contains("{quantidade}"))))
             throw new InvalidOperationException("Promoções por quantidade exigem {condicao} ou {quantidade} no layout.");
         
     }

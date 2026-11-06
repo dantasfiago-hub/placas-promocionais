@@ -34,6 +34,7 @@ public partial class MainWindow
     private readonly PriceItem designItem = Example();
     private Brush gridBrush = null!;
     private PlateElement? designSelected;
+    private PlateElement? inspectorTextElement;
     private double zoom = 1;
     private bool fitMode = true;
     private bool syncing;
@@ -47,7 +48,7 @@ public partial class MainWindow
     private DragKind dragKind;
     private string dragHandle = "";
     private Point dragStart;
-    private (double X, double Y, double W, double H) dragOrigin;
+    private (double X, double Y, double W, double H, double FontSize, double MinFontSize, List<PlateTextStyle> TextStyles) dragOrigin;
     private readonly Dictionary<PlateElement, (double X, double Y)> dragPositions = [];
 
     private static readonly Dictionary<string, (string Text, double W, double H, double Size, bool Bold)> FieldPresets = new()
@@ -358,7 +359,8 @@ public partial class MainWindow
         if (designSelected is null) return;
         dragKind = kind; dragHandle = handle;
         dragStart = e.GetPosition(OverlayLayer);
-        dragOrigin = (designSelected.X, designSelected.Y, designSelected.Width, designSelected.Height);
+        dragOrigin = (designSelected.X, designSelected.Y, designSelected.Width, designSelected.Height,
+            designSelected.FontSize, designSelected.MinFontSize, designSelected.TextStyles.Select(PlateTextFormatting.Clone).ToList());
         dragPositions.Clear();
         IEnumerable<PlateElement> targets = kind == DragKind.Move ? designSelectedElements : new[] { designSelected };
         foreach (var element in targets)
@@ -460,6 +462,22 @@ public partial class MainWindow
         element.X = Math.Round(left, 2); element.Y = Math.Round(top, 2);
         element.Width = Math.Max(min, Math.Round(right - left, 2));
         element.Height = Math.Max(min, Math.Round(bottom - top, 2));
+        if (!element.IsImage)
+        {
+            var scaleX = element.Width / o.W;
+            var scaleY = element.Height / o.H;
+            var fontScale = west || east
+                ? north || south ? Math.Sqrt(scaleX * scaleY) : scaleX
+                : north || south ? scaleY : 1;
+            element.FontSize = Math.Max(0.1, Math.Round(o.FontSize * fontScale, 2));
+            element.MinFontSize = Math.Max(0.1, Math.Round(o.MinFontSize * fontScale, 2));
+            element.TextStyles = dragOrigin.TextStyles.Select(style =>
+            {
+                var resized = PlateTextFormatting.Clone(style);
+                if (resized.FontSize is { } size) resized.FontSize = Math.Max(0.1, Math.Round(size * fontScale, 2));
+                return resized;
+            }).ToList();
+        }
         RefreshVisual(element);
         PositionElement(element);
         UpdateSelectionVisuals();
@@ -677,6 +695,23 @@ public partial class MainWindow
         AddElement(new PlateElement { Text = "Novo texto", X = 5, Y = 5, Width = width, Height = 15, FontSize = 15 }, focusText: true);
     });
 
+    private void AddShapeElementClick(object sender, RoutedEventArgs e) => OpenToolMenu(sender);
+
+    private void AddShapeItemClick(object sender, RoutedEventArgs e) => Run(() =>
+    {
+        if (sender is not MenuItem { Tag: string shape } || !PlateShapes.IsShape(shape)) return;
+        RequireEditingTemplate();
+        var line = shape == PlateShapes.Line;
+        var width = Math.Max(1, Math.Min(line ? 45 : 35, editing!.WidthMm - 5));
+        var height = Math.Max(1, Math.Min(line ? 2 : 25, editing.HeightMm - 5));
+        AddElement(new PlateElement
+        {
+            Text = "", Shape = shape, X = Math.Max(0, Math.Min(5, editing.WidthMm - width)),
+            Y = Math.Max(0, Math.Min(5, editing.HeightMm - height)), Width = width, Height = height,
+            Background = "#00FFFFFF", Foreground = "#111827", StrokeWidth = 0.8
+        });
+    });
+
     private void AddFieldItemClick(object sender, RoutedEventArgs e) => Run(() =>
     {
         if (sender is not MenuItem { Tag: string key } || !FieldPresets.TryGetValue(key, out var preset)) return;
@@ -785,6 +820,17 @@ public partial class MainWindow
 
     private static string LayerTitle(PlateElement element, IReadOnlyList<ImageChoice> choices)
     {
+        if (!string.IsNullOrEmpty(element.Shape))
+            return element.Shape switch
+            {
+                PlateShapes.Rectangle => "Forma: Retângulo",
+                PlateShapes.Ellipse => "Forma: Elipse",
+                PlateShapes.Line => "Forma: Linha",
+                PlateShapes.Triangle => "Forma: Triângulo",
+                PlateShapes.Arrow => "Forma: Seta",
+                PlateShapes.Star => "Forma: Estrela",
+                _ => "Forma"
+            };
         if (!element.IsImage)
         {
             var text = element.Text.Trim();
@@ -806,7 +852,7 @@ public partial class MainWindow
         {
             var order = editing is null ? new List<PlateElement>() : DrawOrder(editing);
             order.Reverse();
-            var rows = order.Select(x => new LayerRow(x, x.IsImage ? "▣" : "T", LayerTitle(x, imageChoices))).ToList();
+            var rows = order.Select(x => new LayerRow(x, x.IsImage ? "▣" : !string.IsNullOrEmpty(x.Shape) ? "◇" : "T", LayerTitle(x, imageChoices))).ToList();
             LayersList.ItemsSource = rows;
             foreach (var row in rows.Where(row => designSelectedElements.Contains(row.Element)))
                 LayersList.SelectedItems.Add(row);
@@ -912,7 +958,10 @@ public partial class MainWindow
             var multi = designSelectedElements.Count > 1;
             PlatePanel.Visibility = element is null && !multi ? Visibility.Visible : Visibility.Collapsed;
             ElementPanel.Visibility = element is null || multi ? Visibility.Collapsed : Visibility.Visible;
-            InspectorTitle.Text = multi ? $"{designSelectedElements.Count} elementos" : element is null ? "Placa" : element.IsImage ? "Imagem" : "Texto";
+            if (element is null || multi || element.IsImage || !string.IsNullOrEmpty(element.Shape))
+                inspectorTextElement = null;
+            InspectorTitle.Text = multi ? $"{designSelectedElements.Count} elementos" : element is null ? "Placa"
+                : element.IsImage ? "Imagem" : !string.IsNullOrEmpty(element.Shape) ? "Forma" : "Texto";
             if (multi) return;
             if (element is null)
             {
@@ -924,22 +973,27 @@ public partial class MainWindow
                 return;
             }
             PosXBox.Text = Fmt(element.X); PosYBox.Text = Fmt(element.Y);
-            WidthBox.Text = Fmt(element.Width); HeightBox.Text = Fmt(element.Height);
             RotationBox.Text = Fmt(element.RotationDegrees);
-            TextPanel.Visibility = element.IsImage ? Visibility.Collapsed : Visibility.Visible;
+            var isShape = !string.IsNullOrEmpty(element.Shape);
+            TextPanel.Visibility = element.IsImage || isShape ? Visibility.Collapsed : Visibility.Visible;
             ImagePanel.Visibility = element.IsImage ? Visibility.Visible : Visibility.Collapsed;
+            ShapePanel.Visibility = isShape ? Visibility.Visible : Visibility.Collapsed;
             if (element.IsImage)
                 ImageSourceBox.SelectedValue = string.IsNullOrWhiteSpace(element.ImageId) ? ImageSources.Product : element.ImageId;
-            else
+            else if (!isShape)
             {
-                TextContentBox.Text = element.Text;
+                if (!ReferenceEquals(inspectorTextElement, element) || TextContentBox.Text != element.Text)
+                {
+                    TextContentBox.Text = element.Text;
+                    TextContentBox.Select(0, 0);
+                    inspectorTextElement = element;
+                }
                 UpdateTextHint();
-                FontButtonText.Text = element.FontFamily;
-                FontSizeBox.Text = Fmt(element.FontSize); MinFontBox.Text = Fmt(element.MinFontSize);
-                BoldToggle.IsChecked = element.Bold; ItalicToggle.IsChecked = element.Italic;
+                UpdateTextFormattingControls();
                 SetAlignToggles(element.TextAlign);
-                SetSwatch(TextColorButton, TextColorBox, element.Foreground);
             }
+            if (isShape) StrokeWidthBox.Text = Fmt(element.StrokeWidth);
+            SetSwatch(StrokeColorButton, StrokeColorBox, element.Foreground);
             SetSwatch(BackColorButton, BackColorBox, element.Background);
         }
         finally { syncing = false; }
@@ -952,7 +1006,6 @@ public partial class MainWindow
         try
         {
             PosXBox.Text = Fmt(designSelected.X); PosYBox.Text = Fmt(designSelected.Y);
-            WidthBox.Text = Fmt(designSelected.Width); HeightBox.Text = Fmt(designSelected.Height);
             RotationBox.Text = Fmt(designSelected.RotationDegrees);
         }
         finally { syncing = false; }
@@ -996,18 +1049,20 @@ public partial class MainWindow
     private void CommitNumeric(TextBox box)
     {
         if (syncing || editing is null) return;
-        var allowZeroOrNegative = box.Name is "PosXBox" or "PosYBox" or "RotationBox";
-        if (!TryNumber(box.Text, out var value) || (!allowZeroOrNegative && value <= 0)) { FillInspector(); return; }
+        var allowNegative = box.Name is "PosXBox" or "PosYBox" or "RotationBox";
+        var allowZero = box.Name == "StrokeWidthBox";
+        if (!TryNumber(box.Text, out var value) || (allowNegative ? false : allowZero ? value < 0 : value <= 0))
+        { FillInspector(); return; }
         value = Math.Round(value, 2);
         switch (box.Name)
         {
             case "PosXBox": ApplyToSelected(el => el.X = value); break;
             case "PosYBox": ApplyToSelected(el => el.Y = value); break;
-            case "WidthBox": ApplyToSelected(el => el.Width = value); break;
-            case "HeightBox": ApplyToSelected(el => el.Height = value); break;
             case "RotationBox": ApplyToSelected(el => el.RotationDegrees = value); break;
-            case "FontSizeBox": ApplyToSelected(el => el.FontSize = value); break;
-            case "MinFontBox": ApplyToSelected(el => el.MinFontSize = value); break;
+            case "FontSizeBox":
+                ApplyTextFormatting(el => el.FontSize = value, style => style.FontSize = value, style => style.FontSize = null);
+                break;
+            case "StrokeWidthBox": ApplyToSelected(el => el.StrokeWidth = value); break;
             case "PlateWidthBox": editing.WidthMm = value; RebuildDesigner(); if (fitMode) ZoomFit(); break;
             case "PlateHeightBox": editing.HeightMm = value; RebuildDesigner(); if (fitMode) ZoomFit(); break;
         }
@@ -1026,9 +1081,74 @@ public partial class MainWindow
     {
         if (syncing || designSelected is null || designSelected.IsImage) return;
         var text = TextContentBox.Text;
-        ApplyToSelected(el => el.Text = text, coalesce: true);
+        ApplyToSelected(el =>
+        {
+            el.TextStyles = PlateTextFormatting.Remap(el.TextStyles, el.Text, text);
+            el.Text = text;
+        }, coalesce: true);
         UpdateTextHint();
         RefreshLayers();
+    }
+
+    private PlateTextStyle? SelectedTextStyle()
+    {
+        if (designSelected is null || TextContentBox.SelectionLength == 0) return null;
+        var position = TextContentBox.SelectionStart;
+        return designSelected.TextStyles.FirstOrDefault(style =>
+            style.Start <= position && style.Start + style.Length > position);
+    }
+
+    private void UpdateTextFormattingControls()
+    {
+        if (designSelected is null) return;
+        var style = SelectedTextStyle();
+        FontButtonText.Text = style?.FontFamily ?? designSelected.FontFamily;
+        FontSizeBox.Text = Fmt(style?.FontSize ?? designSelected.FontSize);
+        BoldToggle.IsChecked = style?.Bold ?? designSelected.Bold;
+        ItalicToggle.IsChecked = style?.Italic ?? designSelected.Italic;
+        UnderlineToggle.IsChecked = style?.Underline ?? designSelected.Underline;
+        SetSwatch(TextColorButton, TextColorBox, style?.Foreground ?? designSelected.Foreground);
+    }
+
+    private void TextSelectionChanged(object sender, RoutedEventArgs e)
+    {
+        if (syncing || designSelected is null || designSelected.IsImage || !string.IsNullOrEmpty(designSelected.Shape)) return;
+        UpdateTextFormattingControls();
+    }
+
+    private void TextContentPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (!Keyboard.Modifiers.HasFlag(ModifierKeys.Control)) return;
+        var toggle = e.Key switch
+        {
+            Key.B => BoldToggle,
+            Key.I => ItalicToggle,
+            Key.U => UnderlineToggle,
+            _ => null
+        };
+        if (toggle is null) return;
+        toggle.IsChecked = toggle.IsChecked != true;
+        StyleToggleClick(toggle, new RoutedEventArgs());
+        e.Handled = true;
+    }
+
+    private void ApplyTextFormatting(
+        Action<PlateElement> changeBase, Action<PlateTextStyle> changeRange, Action<PlateTextStyle> clearRange)
+    {
+        if (designSelected is null || designSelected.IsImage || !string.IsNullOrEmpty(designSelected.Shape)) return;
+        var start = TextContentBox.SelectionStart;
+        var length = TextContentBox.SelectionLength;
+        ApplyToSelected(element =>
+        {
+            if (length > 0)
+                element.TextStyles = PlateTextFormatting.Apply(element.TextStyles, element.Text.Length, start, length, changeRange);
+            else
+            {
+                changeBase(element);
+                element.TextStyles = PlateTextFormatting.Clear(element.TextStyles, clearRange);
+            }
+        });
+        UpdateTextFormattingControls();
     }
 
     private void FieldInsertChanged(object sender, SelectionChangedEventArgs e)
@@ -1046,17 +1166,22 @@ public partial class MainWindow
 
     private void InspectorFontClick(object sender, RoutedEventArgs e) => Run(() =>
     {
-        if (designSelected is null || designSelected.IsImage) return;
-        var chosen = PickFontDialog(designSelected.FontFamily);
+        if (designSelected is null || designSelected.IsImage || !string.IsNullOrEmpty(designSelected.Shape)) return;
+        var chosen = PickFontDialog(SelectedTextStyle()?.FontFamily ?? designSelected.FontFamily);
         if (chosen is null) return;
-        ApplyToSelected(el => el.FontFamily = chosen);
-        FontButtonText.Text = chosen;
+        ApplyTextFormatting(el => el.FontFamily = chosen, style => style.FontFamily = chosen, style => style.FontFamily = null);
     });
 
     private void StyleToggleClick(object sender, RoutedEventArgs e)
     {
-        var bold = BoldToggle.IsChecked == true; var italic = ItalicToggle.IsChecked == true;
-        ApplyToSelected(el => { el.Bold = bold; el.Italic = italic; });
+        if (sender is not ToggleButton toggle) return;
+        var enabled = toggle.IsChecked == true;
+        switch (toggle.Name)
+        {
+            case "BoldToggle": ApplyTextFormatting(el => el.Bold = enabled, style => style.Bold = enabled, style => style.Bold = null); break;
+            case "ItalicToggle": ApplyTextFormatting(el => el.Italic = enabled, style => style.Italic = enabled, style => style.Italic = null); break;
+            case "UnderlineToggle": ApplyTextFormatting(el => el.Underline = enabled, style => style.Underline = enabled, style => style.Underline = null); break;
+        }
     }
 
     private void AlignClick(object sender, RoutedEventArgs e)
@@ -1077,7 +1202,8 @@ public partial class MainWindow
     private string ColorOf(string target) => target switch
     {
         "plate" => editing?.Background ?? "#FFFFFF",
-        "text" => designSelected?.Foreground ?? "#111827",
+        "text" => SelectedTextStyle()?.Foreground ?? designSelected?.Foreground ?? "#111827",
+        "stroke" => designSelected?.Foreground ?? "#111827",
         _ => designSelected?.Background ?? "#00FFFFFF"
     };
 
@@ -1091,7 +1217,8 @@ public partial class MainWindow
                 PlateLayer.Background = SafeBrush(hex) ?? Brushes.White;
                 CommitHistory();
                 break;
-            case "text": ApplyToSelected(el => el.Foreground = hex); break;
+            case "text": ApplyTextFormatting(el => el.Foreground = hex, style => style.Foreground = hex, style => style.Foreground = null); break;
+            case "stroke": ApplyToSelected(el => el.Foreground = hex); break;
             default: ApplyToSelected(el => el.Background = hex); break;
         }
         FillInspector();
@@ -1149,7 +1276,9 @@ public partial class MainWindow
         var grid = new UniformGrid { Columns = 8 };
         foreach (var hex in palette) grid.Children.Add(Swatch(hex));
         var usedColors = editing is null ? new List<string>()
-            : editing.Elements.SelectMany(x => new[] { x.Foreground, x.Background }).Append(editing.Background)
+            : editing.Elements.SelectMany(x => new[] { x.Foreground, x.Background }
+                    .Concat(x.TextStyles.Where(style => style.Foreground is not null).Select(style => style.Foreground!)))
+                .Append(editing.Background)
                 .Select(NormalizeColor).OfType<string>().Where(c => !c.StartsWith("#00")).Distinct().Take(8).ToList();
         var used = new UniformGrid { Columns = 8 };
         foreach (var hex in usedColors) used.Children.Add(Swatch(hex));
