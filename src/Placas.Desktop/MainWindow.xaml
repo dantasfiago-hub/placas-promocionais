@@ -535,13 +535,13 @@
                 <GroupBox x:Name="PageMarginsGroup" Grid.Column="3" Header="Margens da página (mm)" Margin="3" Padding="6">
                   <StackPanel>
                     <WrapPanel>
-                      <StackPanel><TextBlock Text="Superior" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}"/><TextBox x:Name="MarginTopText" Width="58" Text="7"/></StackPanel>
-                      <StackPanel><TextBlock Text="Direita" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}"/><TextBox x:Name="MarginRightText" Width="58" Text="7"/></StackPanel>
-                      <StackPanel><TextBlock Text="Inferior" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}"/><TextBox x:Name="MarginBottomText" Width="58" Text="7"/></StackPanel>
-                      <StackPanel><TextBlock Text="Esquerda" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}"/><TextBox x:Name="MarginLeftText" Width="58" Text="7"/></StackPanel>
-                      <StackPanel><TextBlock Text="Espaço" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}"/><TextBox x:Name="GapText" Width="58" Text="3" ToolTip="Espaço entre placas, em milímetros"/></StackPanel>
+                      <StackPanel><TextBlock Text="Superior" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}"/><TextBox x:Name="MarginTopText" Width="58" Text="0"/></StackPanel>
+                      <StackPanel><TextBlock Text="Direita" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}"/><TextBox x:Name="MarginRightText" Width="58" Text="0"/></StackPanel>
+                      <StackPanel><TextBlock Text="Inferior" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}"/><TextBox x:Name="MarginBottomText" Width="58" Text="0"/></StackPanel>
+                      <StackPanel><TextBlock Text="Esquerda" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}"/><TextBox x:Name="MarginLeftText" Width="58" Text="0"/></StackPanel>
+                      <StackPanel><TextBlock Text="Espaço" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}"/><TextBox x:Name="GapText" Width="58" Text="0" ToolTip="Espaço entre placas, em milímetros"/></StackPanel>
                     </WrapPanel>
-                    <CheckBox x:Name="CutMarks" Content="Contorno de corte" IsChecked="True" Margin="6,2"/>
+                    <CheckBox x:Name="CutMarks" Content="Contorno de corte" IsChecked="False" Margin="6,2"/>
                   </StackPanel>
                 </GroupBox>
               </Grid>
