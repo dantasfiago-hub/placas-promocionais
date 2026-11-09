@@ -9,9 +9,11 @@ using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Threading;
 using System.Windows.Controls.Primitives;
 using Microsoft.Win32;
+using MahApps.Metro.Controls;
 using Placas.Application;
 using Placas.Domain;
 using Placas.Infrastructure;
@@ -96,7 +98,7 @@ public sealed class BatchRow(PriceItem item, int copies)
     public int Copies { get; set; } = copies;
 }
 
-public partial class MainWindow : Window
+public partial class MainWindow : MetroWindow
 {
     private readonly IStore store;
     private readonly BatchService batchService = new();
@@ -113,12 +115,17 @@ public partial class MainWindow : Window
     private CancellationTokenSource? importCancellation;
     private string importReport = "Nenhuma importação realizada nesta sessão.";
     private PrintBatch? currentBatch;
+    private bool darkTheme;
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     public MainWindow(IStore store)
     {
         this.store = store;
         InitializeComponent();
+        Tabs.SelectedIndex = 0;
+        Loaded += (_, _) => UpdateResponsiveLayout(ActualWidth, ActualHeight);
+        UpdateNavigationState();
+        UpdateResponsiveLayout(ActualWidth, ActualHeight);
         FitToWorkArea();
         SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
         Closed += (_, _) => SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
@@ -126,6 +133,8 @@ public partial class MainWindow : Window
         InitDesigner();
         SaleDate.SelectedDate = DateTime.Today;
         BatchGrid.ItemsSource = basket;
+        basket.CollectionChanged += (_, _) => UpdateBatchCount();
+        UpdateBatchCount();
         DocumentPreview.CommandBindings.Add(new CommandBinding(ApplicationCommands.Print, (_, e) => { PrintClick(this, e); e.Handled = true; }));
         renderer.ImageLoader = store.GetImage;
         RefreshTemplates(); RefreshProducts(); RefreshHistory(); RefreshImports(); RefreshImages();
@@ -134,13 +143,218 @@ public partial class MainWindow : Window
     private void OnDisplaySettingsChanged(object? sender, EventArgs e)
         => Dispatcher.BeginInvoke(new Action(FitToWorkArea));
 
+    private void UpdateBatchCount()
+    {
+        BatchCountText.Text = ActualWidth < 940
+            ? basket.Count.ToString(CultureInfo.InvariantCulture)
+            : $"{basket.Count} {(basket.Count == 1 ? "produto" : "produtos")} no lote";
+        BatchCountButton.ToolTip = $"{basket.Count} {(basket.Count == 1 ? "produto" : "produtos")} no lote — abrir Lote e impressão";
+    }
+
+    private void BatchCountClick(object sender, RoutedEventArgs e) => Tabs.SelectedIndex = 2;
+
+    private void NavigateTabClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string tabIndex }
+            && int.TryParse(tabIndex, CultureInfo.InvariantCulture, out var index)
+            && index >= 0 && index < Tabs.Items.Count)
+            Tabs.SelectedIndex = index;
+    }
+
+    private void TabsSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!ReferenceEquals(e.OriginalSource, Tabs)) return;
+        UpdateNavigationState();
+        if (IsLoaded) UpdateResponsiveLayout(ActualWidth, ActualHeight);
+    }
+
+    private void UpdateNavigationState()
+    {
+        Button[] navigationButtons =
+        [
+            ProductsNavButton, LayoutsNavButton, BatchNavButton,
+            HistoryNavButton, ImportsNavButton, ImagesNavButton
+        ];
+        for (var index = 0; index < navigationButtons.Length; index++)
+        {
+            var selected = index == Tabs.SelectedIndex;
+            navigationButtons[index].Foreground = (Brush)System.Windows.Application.Current.Resources[
+                selected ? "SurfaceBrush" : "TextSecondaryBrush"];
+            navigationButtons[index].BorderBrush = Brushes.Transparent;
+            navigationButtons[index].BorderThickness = new Thickness(0);
+            navigationButtons[index].Background = selected
+                ? (Brush)System.Windows.Application.Current.Resources["AccentBrush"]
+                : Brushes.Transparent;
+            navigationButtons[index].FontWeight = selected ? FontWeights.SemiBold : FontWeights.Normal;
+        }
+    }
+
+    private void WindowSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (IsLoaded) UpdateResponsiveLayout(e.NewSize.Width, e.NewSize.Height);
+    }
+
+    private void UpdateResponsiveLayout(double width, double height)
+    {
+        var compactHeader = width < 940;
+        var compactVertical = height < 560;
+        MainHeaderGrid.Height = height < 500 ? 48 : 56;
+        MainHeaderGrid.ColumnDefinitions[0].Width = new GridLength(compactHeader ? 48 : 220);
+        MainHeaderGrid.ColumnDefinitions[2].Width = new GridLength(compactHeader ? 116 : 190);
+        BrandTitle.Visibility = compactHeader ? Visibility.Collapsed : Visibility.Visible;
+        UpdateBatchCount();
+        MainNavScroll.HorizontalScrollBarVisibility = compactHeader ? ScrollBarVisibility.Auto : ScrollBarVisibility.Disabled;
+
+        var oneFilterColumn = width < 720;
+        var fourFilterColumns = width >= 1100;
+        ProductFilterGrid.ColumnDefinitions.Clear();
+        ProductFilterGrid.RowDefinitions.Clear();
+        if (fourFilterColumns)
+        {
+            ProductFilterGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2.2, GridUnitType.Star) });
+            ProductFilterGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.35, GridUnitType.Star) });
+            ProductFilterGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.35, GridUnitType.Star) });
+            ProductFilterGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.35, GridUnitType.Star) });
+            ProductFilterGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            ProductFilterGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            SetFilterPosition(ProductSearchFilter, 0, 0);
+            SetFilterPosition(ProductSourceFilter, 0, 1);
+            SetFilterPosition(ProductSituationFilter, 0, 2);
+            SetFilterPosition(ProductFamilyFilter, 0, 3);
+            SetFilterPosition(SearchButton, 0, 4);
+            Grid.SetColumnSpan(ProductSearchFilter, 1);
+        }
+        else if (oneFilterColumn)
+        {
+            ProductFilterGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            for (var row = 0; row < 5; row++)
+                ProductFilterGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            SetFilterPosition(ProductSearchFilter, 0, 0);
+            SetFilterPosition(ProductSourceFilter, 1, 0);
+            SetFilterPosition(ProductSituationFilter, 2, 0);
+            SetFilterPosition(ProductFamilyFilter, 3, 0);
+            SetFilterPosition(SearchButton, 4, 0);
+            Grid.SetColumnSpan(ProductSearchFilter, 1);
+        }
+        else
+        {
+            ProductFilterGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.6, GridUnitType.Star) });
+            ProductFilterGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            for (var row = 0; row < 3; row++)
+                ProductFilterGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            SetFilterPosition(ProductSearchFilter, 0, 0);
+            Grid.SetColumnSpan(ProductSearchFilter, 2);
+            SetFilterPosition(ProductSourceFilter, 1, 0);
+            SetFilterPosition(ProductSituationFilter, 1, 1);
+            SetFilterPosition(ProductFamilyFilter, 2, 0);
+            SetFilterPosition(SearchButton, 2, 1);
+        }
+
+        DesignerGrid.ColumnDefinitions[0].Width = new GridLength(width < 720 ? 48 : width < 940 ? 52 : 56);
+        DesignerGrid.ColumnDefinitions[2].Width = new GridLength(width < 720 ? 190 : width < 940 ? 220 : 266);
+
+        var compactBatch = width < 1100;
+        BatchSettingsGrid.ColumnDefinitions.Clear();
+        BatchSettingsGrid.RowDefinitions.Clear();
+        if (compactBatch)
+        {
+            for (var column = 0; column < 3; column++)
+                BatchSettingsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            BatchSettingsGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            BatchSettingsGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            SetBatchSettingPosition(BatchTemplateSetting, 0, 0);
+            SetBatchSettingPosition(BatchDateSetting, 0, 1);
+            SetBatchSettingPosition(BatchPaperSetting, 0, 2);
+            SetBatchSettingPosition(PageMarginsGroup, 1, 0);
+            Grid.SetColumnSpan(PageMarginsGroup, 3);
+        }
+        else
+        {
+            BatchSettingsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.2, GridUnitType.Star) });
+            BatchSettingsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.2, GridUnitType.Star) });
+            BatchSettingsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.1, GridUnitType.Star) });
+            BatchSettingsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2.2, GridUnitType.Star) });
+            BatchSettingsGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            SetBatchSettingPosition(BatchTemplateSetting, 0, 0);
+            SetBatchSettingPosition(BatchDateSetting, 0, 1);
+            SetBatchSettingPosition(BatchPaperSetting, 0, 2);
+            SetBatchSettingPosition(PageMarginsGroup, 0, 3);
+            Grid.SetColumnSpan(PageMarginsGroup, 1);
+        }
+
+        var pageMargin = width < 720 ? 10 : width < 940 ? 16 : 24;
+        ProductsGrid.MinHeight = compactVertical ? 60 : 100;
+        if (Tabs.SelectedIndex is 0 or 1)
+            if (Tabs.SelectedContent is FrameworkElement content && content is Border border
+                && border.Child is DockPanel page)
+                page.Margin = new Thickness(pageMargin, compactVertical ? 8 : width < 720 ? 10 : 16,
+                    pageMargin, compactVertical ? 8 : width < 720 ? 10 : 16);
+    }
+
+    private static void SetFilterPosition(UIElement element, int row, int column)
+    {
+        Grid.SetRow(element, row);
+        Grid.SetColumn(element, column);
+    }
+
+    private static void SetBatchSettingPosition(UIElement element, int row, int column)
+    {
+        Grid.SetRow(element, row);
+        Grid.SetColumn(element, column);
+    }
+
+    private void GoProductsClick(object sender, RoutedEventArgs e) => Tabs.SelectedIndex = 0;
+
+    private void DocumentPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.F || Keyboard.Modifiers != ModifierKeys.Control) return;
+        Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,
+            new Action(() => LocalizeFindPrompt(DocumentPreview)));
+    }
+
+    private static void LocalizeFindPrompt(DependencyObject parent)
+    {
+        for (var index = 0; index < System.Windows.Media.VisualTreeHelper.GetChildrenCount(parent); index++)
+        {
+            var child = System.Windows.Media.VisualTreeHelper.GetChild(parent, index);
+            if (child is TextBlock text && text.Text.Contains("Type text to find", StringComparison.OrdinalIgnoreCase))
+                text.Text = "Digite o texto para localizar...";
+            LocalizeFindPrompt(child);
+        }
+    }
+
+    private void ThemeToggleClick(object sender, RoutedEventArgs e)
+    {
+        darkTheme = !darkTheme;
+        var resources = System.Windows.Application.Current.Resources;
+        resources["CanvasBrush"] = CreateBrush(darkTheme ? "#151A20" : "#F5F7FA");
+        resources["SurfaceBrush"] = CreateBrush(darkTheme ? "#202832" : "#FFFFFF");
+        resources["BorderBrush"] = CreateBrush(darkTheme ? "#35414D" : "#E1E7EF");
+        resources["BorderStrongBrush"] = CreateBrush(darkTheme ? "#4C5B68" : "#C7D1DD");
+        resources["TextPrimaryBrush"] = CreateBrush(darkTheme ? "#E6EDF3" : "#233247");
+        resources["TextSecondaryBrush"] = CreateBrush(darkTheme ? "#A7B3C2" : "#66758A");
+        resources["AccentBrush"] = CreateBrush(darkTheme ? "#458C91" : "#347E83");
+        resources["AccentHoverBrush"] = CreateBrush(darkTheme ? "#76B5B6" : "#286B70");
+        resources["AccentSoftBrush"] = CreateBrush(darkTheme ? "#293B40" : "#EBF4F4");
+        resources["FocusRingBrush"] = CreateBrush(darkTheme ? "#80458C91" : "#80347E83");
+        resources["DangerSoftBrush"] = CreateBrush(darkTheme ? "#402A2A" : "#FFF3F2");
+        resources["DangerBorderBrush"] = CreateBrush(darkTheme ? "#72423F" : "#E8B8B4");
+        resources["DangerTextBrush"] = CreateBrush(darkTheme ? "#FF9A90" : "#A12B24");
+        ThemeToggle.ToolTip = darkTheme ? "Alternar para o tema claro" : "Alternar para o tema escuro";
+        UpdateNavigationState();
+    }
+
+    private static SolidColorBrush CreateBrush(string color) => new((Color)ColorConverter.ConvertFromString(color));
+
     private void FitToWorkArea()
     {
         var area = SystemParameters.WorkArea;
+        MinWidth = Math.Min(640, area.Width);
+        MinHeight = Math.Min(420, area.Height);
         MaxWidth = area.Width;
         MaxHeight = area.Height;
         Width = Math.Min(1280, area.Width);
-        Height = Math.Min(780, area.Height);
+        Height = Math.Min(720, area.Height);
         Left = area.Left + Math.Max(0, (area.Width - Width) / 2);
         Top = area.Top + Math.Max(0, (area.Height - Height) / 2);
     }

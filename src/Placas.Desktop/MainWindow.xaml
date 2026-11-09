@@ -1,67 +1,142 @@
-<Window x:Class="Placas.Desktop.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="Placas Promocionais" Icon="Assets/placas.ico" Width="1100" Height="720" MinWidth="640" MinHeight="480" WindowStartupLocation="CenterScreen">
+<mah:MetroWindow x:Class="Placas.Desktop.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:mah="http://metro.mahapps.com/winfx/xaml/controls" Title="Placas Promocionais" Icon="Assets/placas.ico" Width="1280" Height="720" MinWidth="640" MinHeight="420" WindowStartupLocation="CenterScreen" Background="{DynamicResource CanvasBrush}" BorderThickness="0" ResizeMode="CanResizeWithGrip" GlowBrush="{DynamicResource BorderStrongBrush}" FontFamily="{DynamicResource BodyFont}" FontSize="{DynamicResource BodyFontSize}" SizeChanged="WindowSizeChanged">
   <DockPanel>
-    <Border DockPanel.Dock="Top" Background="#102C46" Padding="22,16">
-      <DockPanel><TextBlock Foreground="#81E2D5" DockPanel.Dock="Right"  VerticalAlignment="Center"/><TextBlock Text="Placas Promocionais" Foreground="White" FontSize="24" FontWeight="Bold"/></DockPanel>
-    </Border>
-    <StatusBar DockPanel.Dock="Bottom"><TextBlock x:Name="Status" Text="Importe os arquivos do VR Master para começar."/></StatusBar>
-    <TabControl x:Name="Tabs" Margin="14">
-      <TabItem Header="1. Produtos e importação">
-        <DockPanel Margin="12">
+    <Grid x:Name="MainHeaderGrid" DockPanel.Dock="Top" Height="56" Background="{DynamicResource SurfaceBrush}">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="220"/>
+        <ColumnDefinition Width="*"/>
+        <ColumnDefinition Width="190"/>
+      </Grid.ColumnDefinitions>
+      <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="20,0,0,0">
+        <Border Width="28" Height="28" CornerRadius="8" Background="{DynamicResource AccentBrush}" Margin="0,0,10,0">
+          <TextBlock Text="P" Foreground="White" FontSize="17" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Border>
+        <TextBlock x:Name="BrandTitle" Text="Placas Promocionais" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="14" FontWeight="Bold" VerticalAlignment="Center"/>
+      </StackPanel>
+      <ScrollViewer x:Name="MainNavScroll" Grid.Column="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" CanContentScroll="False">
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Stretch">
+        <Button x:Name="ProductsNavButton" Tag="0" Content="Produtos" Style="{StaticResource NavButton}" Click="NavigateTabClick"/>
+        <Button x:Name="LayoutsNavButton" Tag="1" Content="Layouts" Style="{StaticResource NavButton}" Click="NavigateTabClick"/>
+        <Button x:Name="BatchNavButton" Tag="2" Content="Lote e impressão" Style="{StaticResource NavButton}" Click="NavigateTabClick"/>
+        <Button x:Name="HistoryNavButton" Tag="3" Content="Histórico" Style="{StaticResource NavButton}" Click="NavigateTabClick"/>
+        <Button x:Name="ImportsNavButton" Tag="4" Content="Importações" Style="{StaticResource NavButton}" Click="NavigateTabClick"/>
+        <Button x:Name="ImagesNavButton" Tag="5" Content="Imagens" Style="{StaticResource NavButton}" Click="NavigateTabClick"/>
+      </StackPanel>
+      </ScrollViewer>
+      <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,20,0">
+        <Button x:Name="ThemeToggle" Style="{StaticResource TertiaryButton}" Content="◐" Padding="8,4" Margin="0,0,8,0" MinHeight="28" Click="ThemeToggleClick" ToolTip="Alternar entre o tema claro e escuro"/>
+        <Border Background="{DynamicResource AccentSoftBrush}" CornerRadius="14" Padding="4,1">
+          <Button x:Name="BatchCountButton" Style="{StaticResource TertiaryButton}" Padding="8,3" Margin="0" MinHeight="24" Click="BatchCountClick" ToolTip="Abrir lote e impressão">
+            <TextBlock x:Name="BatchCountText" Text="0 produtos no lote" FontSize="11" FontWeight="SemiBold"/>
+          </Button>
+        </Border>
+      </StackPanel>
+      <Border Grid.ColumnSpan="3" Height="1" Background="{DynamicResource BorderBrush}" VerticalAlignment="Bottom"/>
+    </Grid>
+    <StatusBar DockPanel.Dock="Bottom" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="14,3">
+      <StatusBarItem HorizontalContentAlignment="Stretch">
+        <DockPanel>
+          <TextBlock x:Name="Status" Text="Importe os arquivos do VR Master para começar." Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+        </DockPanel>
+      </StatusBarItem>
+    </StatusBar>
+    <TabControl x:Name="Tabs" SelectedIndex="0" Margin="0" Background="Transparent" Style="{StaticResource ContentOnlyTabControl}" SelectionChanged="TabsSelectionChanged">
+      <TabItem Header="Produtos">
+        <Border Background="{DynamicResource CanvasBrush}" Margin="0">
+        <DockPanel Margin="24,18">
           <StackPanel DockPanel.Dock="Top">
-            <DockPanel Margin="0,0,0,4">
-              <TextBlock DockPanel.Dock="Left" Width="130" Text="Importação e dados" Style="{StaticResource GroupLabel}"/>
-              <WrapPanel>
-                <Button x:Name="ImportButton" Style="{StaticResource PrimaryButton}" Content="Importar XLS / XLSX" Click="ImportClick" ToolTip="Importa planilhas do VR Master (catálogo, ofertas e promoções)"/>
-                <Button Content="Cancelar leitura" Click="CancelImportClick"/>
-                <Button Content="Relatório da importação" Click="ImportReportClick"/>
-                <Button Content="Backup do banco" Click="BackupClick"/>
-                <Button Content="Abrir pasta de dados" Click="OpenDataClick"/>
+            <DockPanel Margin="4,2,4,12" LastChildFill="True">
+              <WrapPanel DockPanel.Dock="Right" VerticalAlignment="Center" HorizontalAlignment="Right">
+              <Button x:Name="NewProductButton" Style="{StaticResource SecondaryButton}" Click="NewProductClick" ToolTip="Cadastrar um produto manualmente">
+                <StackPanel Orientation="Horizontal">
+                  <Path Data="M 12,5 L 12,19 M 5,12 L 19,12" Stroke="{DynamicResource AccentHoverBrush}" StrokeThickness="1.8" Width="16" Height="16" Stretch="Uniform" Margin="0,0,6,0"/>
+                  <TextBlock Text="Cadastrar produto" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button x:Name="ImportButton" DockPanel.Dock="Right" Style="{StaticResource PrimaryButton}" Click="ImportClick" ToolTip="Importa planilhas do VR Master (catálogo, ofertas e promoções)">
+                <StackPanel Orientation="Horizontal">
+                  <Path Data="M 12,3 L 12,14 M 7,8 L 12,3 L 17,8 M 4,15 L 4,20 L 20,20 L 20,15" Stroke="White" StrokeThickness="1.7" Width="18" Height="18" Stretch="Uniform" Margin="0,0,8,0"/>
+                  <TextBlock Text="Importar planilhas" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
               </WrapPanel>
+              <StackPanel>
+                <TextBlock Text="Produtos" Style="{StaticResource PageTitle}"/>
+                <TextBlock Text="Cadastre e gerencie produtos; selecione itens para montar as placas." Style="{StaticResource PageSubtitle}"/>
+              </StackPanel>
             </DockPanel>
-            <DockPanel Margin="0,0,0,4">
-              <TextBlock DockPanel.Dock="Left" Width="130" Text="Buscar e filtrar" Style="{StaticResource GroupLabel}"/>
-              <WrapPanel>
-                <TextBox x:Name="SearchText" Width="300" ToolTip="Código ou descrição (Enter para pesquisar)" KeyDown="SearchKeyDown"/>
-                <ComboBox x:Name="SourceFilter" Width="150" SelectedIndex="0"><ComboBoxItem Content="Todas as origens"/><ComboBoxItem Content="Catálogo"/><ComboBoxItem Content="Ofertas"/><ComboBoxItem Content="Promoções"/></ComboBox>
-                <ComboBox x:Name="StatusFilter" Width="160" SelectedIndex="0" SelectionChanged="ProductFilterChanged" ToolTip="Filtrar por situação"><ComboBoxItem Content="Todas as situações"/><ComboBoxItem Content="Não vencidas"/><ComboBoxItem Content="Vencidas"/><ComboBoxItem Content="Requerem atenção"/></ComboBox>
-                <ComboBox x:Name="FamilyFilter" Width="170" SelectionChanged="ProductFilterChanged" ToolTip="Filtrar por família"/>
-                <Button Content="Pesquisar" Click="SearchClick"/>
-              </WrapPanel>
-            </DockPanel>
-            <DockPanel Margin="0,0,0,4">
-              <TextBlock DockPanel.Dock="Left" Width="130" Text="Seleção" Style="{StaticResource GroupLabel}"/>
-              <WrapPanel>
-                <Button Content="Marcar exibidos" Click="SelectAllClick" ToolTip="Marca todas as linhas exibidas (ou use a caixa do cabeçalho)"/>
-                <Button Content="Marcar destacados" Click="MarkHighlightedClick" ToolTip="Marca as linhas destacadas com Ctrl/Shift+clique (a barra de espaço faz o mesmo)"/>
-                <Button Content="Desmarcar tudo" Click="ClearSelectionClick"/>
-                <TextBlock x:Name="SelectionInfo" VerticalAlignment="Center" Margin="10,0,0,0" Foreground="#0F766E" FontWeight="SemiBold" Text="Nenhum item selecionado."/>
-              </WrapPanel>
-            </DockPanel>
-            <DockPanel Margin="0,0,0,4">
-              <TextBlock DockPanel.Dock="Left" Width="130" Text="Itens selecionados" Style="{StaticResource GroupLabel}"/>
-              <WrapPanel>
-                <Button Content="Novo registro" Click="NewProductClick"/>
-                <Button x:Name="EditProductButton" Content="Editar" Click="EditProductClick" ToolTip="Edita um item por vez"/>
-                <Button x:Name="DeleteProductButton" Style="{StaticResource DangerButton}" Content="Excluir" Click="DeleteProductClick" ToolTip="Exclui todos os itens marcados (ou destacados). Atalho: Delete"/>
-                <Button x:Name="ProductImageButton" Content="Imagem do produto…" Click="ProductImageClick" ToolTip="Vincula uma imagem da biblioteca ao produto (vale para catálogo, ofertas e promoções dele)"/>
-                <Button x:Name="FamilyImageButton" Content="Imagem da família…" Click="FamilyImageClick" ToolTip="Vincula uma imagem da biblioteca à família dos itens selecionados (vale para todos os produtos dela e para a placa da família)"/>
-                <Button x:Name="ConfirmRuleButton" Content="Confirmar regra da promoção" Click="ConfirmRuleClick" ToolTip="Define se o valor da promoção é o total do conjunto ou por unidade, para todas as promoções selecionadas"/>
-              </WrapPanel>
-            </DockPanel>
-            <DockPanel Margin="0,0,0,8">
-              <TextBlock DockPanel.Dock="Left" Width="130" Text="Lote de placas" Style="{StaticResource GroupLabel}"/>
-              <WrapPanel>
-                <TextBlock Text="Cópias por item:" VerticalAlignment="Center"/>
-                <TextBox x:Name="CopiesText" Text="1" Width="55"/>
-                <Button x:Name="AddToBatchButton" Style="{StaticResource PrimaryButton}" Content="Adicionar ao lote" Click="AddToBatchClick" ToolTip="Adiciona uma placa por produto selecionado"/>
-                <Button x:Name="AddFamiliesButton" Style="{StaticResource PrimaryButton}" Content="Adicionar placas de família" Click="AddFamiliesToBatchClick" ToolTip="Gera uma placa por família (ou grupo de promoção) com a descrição dela. Itens sem família ficam de fora e são listados; os demais entram normalmente."/>
-              </WrapPanel>
-            </DockPanel>
+
+            <Border Style="{StaticResource SurfaceCard}" Padding="10" Margin="0,0,0,8">
+              <Grid x:Name="ProductFilterGrid">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="2.2*"/>
+                  <ColumnDefinition Width="1.35*"/>
+                  <ColumnDefinition Width="1.35*"/>
+                  <ColumnDefinition Width="1.35*"/>
+                  <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                <StackPanel x:Name="ProductSearchFilter">
+                  <TextBlock Text="Código ou descrição" Style="{StaticResource GroupLabel}"/>
+                  <TextBox x:Name="SearchText" ToolTip="Pressione Enter para pesquisar" KeyDown="SearchKeyDown" mah:TextBoxHelper.Watermark="Buscar produto..."/>
+                </StackPanel>
+                <StackPanel x:Name="ProductSourceFilter" Grid.Column="1">
+                  <TextBlock Text="Origem" Style="{StaticResource GroupLabel}"/>
+                  <ComboBox x:Name="SourceFilter" SelectedIndex="0"><ComboBoxItem Content="Todas"/><ComboBoxItem Content="Catálogo"/><ComboBoxItem Content="Ofertas"/><ComboBoxItem Content="Promoções"/></ComboBox>
+                </StackPanel>
+                <StackPanel x:Name="ProductSituationFilter" Grid.Column="2">
+                  <TextBlock Text="Situação" Style="{StaticResource GroupLabel}"/>
+                  <ComboBox x:Name="StatusFilter" SelectedIndex="0" SelectionChanged="ProductFilterChanged" ToolTip="Filtrar por situação"><ComboBoxItem Content="Todas"/><ComboBoxItem Content="Não vencidas"/><ComboBoxItem Content="Vencidas"/><ComboBoxItem Content="Requerem atenção"/></ComboBox>
+                </StackPanel>
+                <StackPanel x:Name="ProductFamilyFilter" Grid.Column="3">
+                  <TextBlock Text="Família" Style="{StaticResource GroupLabel}"/>
+                  <ComboBox x:Name="FamilyFilter" SelectionChanged="ProductFilterChanged"/>
+                </StackPanel>
+                <Button x:Name="SearchButton" Grid.Column="4" Content="Pesquisar" Click="SearchClick" VerticalAlignment="Bottom" Margin="3"/>
+              </Grid>
+            </Border>
+
+            <Border Style="{StaticResource SurfaceCard}" Padding="8,4" Margin="0,0,0,8">
+              <DockPanel LastChildFill="True">
+                <TextBlock x:Name="SelectionInfo" DockPanel.Dock="Left" Width="112" Text="Nenhum item selecionado." Foreground="{DynamicResource AccentHoverBrush}" FontWeight="SemiBold" TextWrapping="Wrap" VerticalAlignment="Center" Margin="4,0,8,0"/>
+                <WrapPanel VerticalAlignment="Center">
+                  <Button Content="Marcar exibidos" Click="SelectAllClick" ToolTip="Marca todas as linhas exibidas"/>
+                  <Button Content="Marcar destacados" Click="MarkHighlightedClick" ToolTip="Marca as linhas destacadas com Ctrl/Shift+clique"/>
+                  <Button Content="Desmarcar" Click="ClearSelectionClick"/>
+                  <Border Width="1" Height="26" Background="{DynamicResource BorderBrush}" Margin="5,5"/>
+                  <Button x:Name="EditProductButton" Content="Editar" Click="EditProductClick" ToolTip="Edita um item por vez"/>
+                  <Button x:Name="DeleteProductButton" Style="{StaticResource DangerButton}" Content="Excluir" Click="DeleteProductClick" ToolTip="Exclui os itens marcados ou destacados. Atalho: Delete"/>
+                  <Border Width="1" Height="26" Background="{DynamicResource BorderBrush}" Margin="5,5"/>
+                  <Button x:Name="ProductImageButton" Content="Imagem do produto" Click="ProductImageClick" ToolTip="Vincula uma imagem da biblioteca ao produto"/>
+                  <Button x:Name="FamilyImageButton" Content="Imagem da família" Click="FamilyImageClick" ToolTip="Vincula uma imagem da biblioteca à família dos itens"/>
+                  <TextBlock Text="Cópias" VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" Margin="5,0,0,0"/>
+                  <TextBox x:Name="CopiesText" Text="1" Width="46" ToolTip="Cópias por produto"/>
+                  <Button x:Name="AddToBatchButton" Style="{StaticResource PrimaryButton}" Click="AddToBatchClick" ToolTip="Adiciona uma placa por produto selecionado">
+                    <StackPanel Orientation="Horizontal">
+                      <Path Data="M 12,5 L 12,19 M 5,12 L 19,12" Stroke="White" StrokeThickness="1.8" Width="16" Height="16" Stretch="Uniform" Margin="0,0,6,0"/>
+                      <TextBlock Text="Adicionar ao lote" VerticalAlignment="Center"/>
+                    </StackPanel>
+                  </Button>
+                  <Button x:Name="AddFamiliesButton" Style="{StaticResource SecondaryButton}" Click="AddFamiliesToBatchClick" ToolTip="Gera uma placa por família ou grupo de promoção">Placas por família</Button>
+                  <Button x:Name="ConfirmRuleButton" Style="{StaticResource SecondaryButton}" Content="Confirmar regra" Click="ConfirmRuleClick" ToolTip="Define se o valor da promoção é total do conjunto ou por unidade"/>
+                </WrapPanel>
+              </DockPanel>
+            </Border>
+
+            <Expander Header="Importação e manutenção de dados" Margin="0,0,0,8">
+              <Border Style="{StaticResource SurfaceCard}" Padding="8" Margin="0,4,0,0">
+                <WrapPanel>
+                  <Button Content="Cancelar leitura" Click="CancelImportClick"/>
+                  <Button Content="Relatório da importação" Click="ImportReportClick"/>
+                  <Button Content="Backup do banco" Click="BackupClick"/>
+                  <Button Content="Abrir pasta de dados" Click="OpenDataClick"/>
+                </WrapPanel>
+              </Border>
+            </Expander>
           </StackPanel>
           <Expander DockPanel.Dock="Bottom" Header="Legenda e dicas" Margin="0,8,0,0">
-            <TextBlock TextWrapping="Wrap" Foreground="#526172" Margin="4,6" Text="Marcar ou destacar: as ações valem para os itens marcados (caixa da primeira coluna); se nenhum estiver marcado, valem para as linhas destacadas (Ctrl/Shift+clique). Barra de espaço marca ou desmarca as linhas destacadas; Delete exclui. Busca limitada a 500 condições; os filtros de situação e família atuam sobre esse resultado. Cores: vermelho = vencida, amarelo = regra a confirmar, azul = futura. Passe o mouse sobre a linha para ver arquivo, aba e linha. Clique no cabeçalho para ordenar."/>
+            <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" Margin="4,6" Text="Marcar ou destacar: as ações valem para os itens marcados (caixa da primeira coluna); se nenhum estiver marcado, valem para as linhas destacadas (Ctrl/Shift+clique). Barra de espaço marca ou desmarca as linhas destacadas; Delete exclui. Busca limitada a 500 condições; os filtros de situação e família atuam sobre esse resultado. Cores: vermelho = vencida, amarelo = regra a confirmar, azul = futura. Passe o mouse sobre a linha para ver arquivo, aba e linha. Clique no cabeçalho para ordenar."/>
           </Expander>
-          <DataGrid x:Name="ProductsGrid" SelectionMode="Extended" RowHeight="42" SelectionChanged="ProductsSelectionChanged" PreviewKeyDown="ProductsGridKeyDown">
+          <DataGrid x:Name="ProductsGrid" MinHeight="100" SelectionMode="Extended" RowHeight="42" SelectionChanged="ProductsSelectionChanged" PreviewKeyDown="ProductsGridKeyDown">
             <DataGrid.Resources>
               <Style x:Key="CellText" TargetType="TextBlock"><Setter Property="VerticalAlignment" Value="Center"/><Setter Property="Margin" Value="6,0"/></Style>
               <Style x:Key="RightText" TargetType="TextBlock" BasedOn="{StaticResource CellText}"><Setter Property="TextAlignment" Value="Right"/></Style>
@@ -83,10 +158,12 @@
               </Style>
             </DataGrid.Resources>
             <DataGrid.RowStyle>
-              <Style TargetType="DataGridRow">
+                <Style TargetType="DataGridRow" BasedOn="{StaticResource GridRowStyle}">
                 <Setter Property="ToolTip" Value="{Binding Details}"/>
                 <Style.Triggers>
-                  <DataTrigger Binding="{Binding Level}" Value="expired"><Setter Property="Background" Value="#FBE9E9"/></DataTrigger>
+                    <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="{DynamicResource AccentSoftBrush}"/></Trigger>
+                    <Trigger Property="IsSelected" Value="True"><Setter Property="Background" Value="{DynamicResource AccentSoftBrush}"/></Trigger>
+                    <DataTrigger Binding="{Binding Level}" Value="expired"><Setter Property="Background" Value="#FBE9E9"/></DataTrigger>
                   <DataTrigger Binding="{Binding Level}" Value="attention"><Setter Property="Background" Value="#FFF4D6"/></DataTrigger>
                   <DataTrigger Binding="{Binding Level}" Value="future"><Setter Property="Background" Value="#EAF3FF"/></DataTrigger>
                 </Style.Triggers>
@@ -107,7 +184,7 @@
                   <DataTemplate>
                     <StackPanel VerticalAlignment="Center" Margin="6,0">
                       <TextBlock Text="{Binding Item.Description}" TextTrimming="CharacterEllipsis"/>
-                      <TextBlock Text="{Binding Item.SubDescription}" FontSize="11" Foreground="#6B7785" TextTrimming="CharacterEllipsis">
+                      <TextBlock Text="{Binding Item.SubDescription}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis">
                         <TextBlock.Style>
                           <Style TargetType="TextBlock"><Style.Triggers><DataTrigger Binding="{Binding HasSub}" Value="False"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers></Style>
                         </TextBlock.Style>
@@ -117,7 +194,7 @@
                 </DataGridTemplateColumn.CellTemplate>
               </DataGridTemplateColumn>
               <DataGridTextColumn Header="Preço (R$)" Binding="{Binding Item.Price, StringFormat=N2}" Width="90" IsReadOnly="True" ElementStyle="{StaticResource RightText}"/>
-              <DataGridTextColumn Header="Normal (R$)" Binding="{Binding Item.NormalPrice, StringFormat=N2}" Width="90" IsReadOnly="True" ElementStyle="{StaticResource RightText}"/>
+              <DataGridTextColumn Header="Normal (R$)" Binding="{Binding Item.NormalPrice, StringFormat=N2}" Width="100" MinWidth="100" IsReadOnly="True" ElementStyle="{StaticResource RightText}"/>
               <DataGridTextColumn Header="Origem" Binding="{Binding Origin}" Width="85" IsReadOnly="True" ElementStyle="{StaticResource OriginText}"/>
               <DataGridTextColumn Header="Condição" Binding="{Binding Condition}" SortMemberPath="Item.Quantity" Width="160" IsReadOnly="True" ElementStyle="{StaticResource CellText}"/>
               <DataGridTextColumn Header="Validade" Binding="{Binding Item.End, StringFormat=dd/MM/yyyy, TargetNullValue='—'}" Width="95" IsReadOnly="True" ElementStyle="{StaticResource CellText}"/>
@@ -127,37 +204,44 @@
             </DataGrid.Columns>
           </DataGrid>
         </DockPanel>
+        </Border>
       </TabItem>
-      <TabItem Header="2. Layouts salvos">
-        <DockPanel Margin="8">
+      <TabItem Header="Layouts">
+        <Border Background="{DynamicResource CanvasBrush}" Margin="0">
+        <DockPanel Margin="24,16">
+          <Border DockPanel.Dock="Top" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="8" Margin="0,0,0,12">
           <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
             <WrapPanel DockPanel.Dock="Left">
               <TextBlock Text="Layout:" Style="{StaticResource GroupLabel}"/>
               <ComboBox x:Name="TemplatesBox" Width="240" DisplayMemberPath="Name" SelectionChanged="TemplateChanged"/>
               <Button Content="Novo" Click="NewTemplateClick"/>
               <Button Content="Duplicar" Click="DuplicateTemplateClick"/>
-              <Button Style="{StaticResource PrimaryButton}" Content="Salvar layout" Click="SaveTemplateClick"/>
-              <Button Style="{StaticResource DangerButton}" Content="Excluir" Click="DeleteTemplateClick"/>
               <Button Content="Exportar JSON" Click="ExportTemplateClick"/>
               <Button Content="Importar JSON" Click="ImportTemplateClick"/>
+              <Border Width="1" Height="26" Background="{DynamicResource BorderBrush}" Margin="6,6"/>
+              <Button Style="{StaticResource DangerButton}" Content="Excluir" Click="DeleteTemplateClick"/>
             </WrapPanel>
-            <TextBlock x:Name="PreviewStatus" VerticalAlignment="Center" Margin="12,0,0,0" Foreground="#526172" TextTrimming="CharacterEllipsis" Text="Selecione ou crie um layout."/>
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+              <TextBlock x:Name="PreviewStatus" VerticalAlignment="Center" Margin="8,0,8,0" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" Text="Selecione ou crie um layout."/>
+              <Button Style="{StaticResource PrimaryButton}" Content="Salvar layout" Click="SaveTemplateClick"/>
+            </StackPanel>
           </DockPanel>
-          <Grid>
+          </Border>
+          <Grid x:Name="DesignerGrid">
             <Grid.ColumnDefinitions>
-              <ColumnDefinition Width="88"/>
+              <ColumnDefinition Width="52"/>
               <ColumnDefinition Width="*"/>
-              <ColumnDefinition Width="320"/>
+              <ColumnDefinition Width="266"/>
             </Grid.ColumnDefinitions>
 
             <!-- Ferramentas -->
-            <Border Grid.Column="0" Background="#F3F5F8" BorderBrush="#D5DBE3" BorderThickness="1" CornerRadius="4" Margin="0,0,6,0">
-              <StackPanel Margin="3">
-                <Button Click="AddTextElementClick" Height="54" Padding="4,4" ToolTip="Adicionar caixa de texto">
-                  <StackPanel><TextBlock Text="T" FontSize="20" FontWeight="Bold" HorizontalAlignment="Center"/><TextBlock Text="Texto" FontSize="10" HorizontalAlignment="Center"/></StackPanel>
+            <Border Grid.Column="0" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="10" Margin="0,0,8,0">
+              <StackPanel Margin="0">
+                <Button Click="AddTextElementClick" Height="44" Margin="0" Padding="0" ToolTip="Adicionar caixa de texto">
+                  <TextBlock Text="T" FontSize="20" FontWeight="Bold" HorizontalAlignment="Center"/>
                 </Button>
-                <Button Click="AddFieldElementClick" Height="54" Padding="4,4" ToolTip="Adicionar um campo do produto (descrição, preço, validade...)">
-                  <StackPanel><TextBlock Text="#" FontSize="20" FontWeight="Bold" HorizontalAlignment="Center"/><TextBlock Text="Campo" FontSize="10" HorizontalAlignment="Center"/></StackPanel>
+                <Button Click="AddFieldElementClick" Height="44" Margin="0" Padding="0" ToolTip="Adicionar um campo do produto (descrição, preço, validade...)">
+                  <TextBlock Text="#" FontSize="20" FontWeight="Bold" HorizontalAlignment="Center"/>
                   <Button.ContextMenu>
                     <ContextMenu>
                       <MenuItem Header="Descrição do produto" Tag="descricao" Click="AddFieldItemClick"/>
@@ -175,14 +259,13 @@
                     </ContextMenu>
                   </Button.ContextMenu>
                 </Button>
-                <Button Click="AddImageElementClick" Height="54" Padding="4,4" ToolTip="Inserir imagem: do computador, da biblioteca, ou espaço para a imagem do produto ou da família. Imagens ficam ao fundo.">
+                <Button Click="AddImageElementClick" Height="44" Margin="0" Padding="0" ToolTip="Inserir imagem: do computador, da biblioteca, ou espaço para a imagem do produto ou da família. Imagens ficam ao fundo.">
                   <StackPanel>
                     <Grid Width="24" Height="20">
                       <Border BorderBrush="#123740" BorderThickness="1.5" CornerRadius="2"/>
-                      <Ellipse Width="4" Height="4" Fill="#123740" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4,4,0,0"/>
-                      <Polygon Points="2,17 8,10 12,14 16,9 22,17" Stroke="#123740" StrokeThickness="1.5" Fill="Transparent"/>
+                      <Ellipse Width="4" Height="4" Fill="{DynamicResource AccentHoverBrush}" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4,4,0,0"/>
+                      <Polygon Points="2,17 8,10 12,14 16,9 22,17" Stroke="{DynamicResource AccentHoverBrush}" StrokeThickness="1.5" Fill="Transparent"/>
                     </Grid>
-                    <TextBlock Text="Imagem" FontSize="10" HorizontalAlignment="Center"/>
                   </StackPanel>
                   <Button.ContextMenu>
                     <ContextMenu>
@@ -195,13 +278,12 @@
                     </ContextMenu>
                   </Button.ContextMenu>
                 </Button>
-                <Button Click="AddShapeElementClick" Height="54" Padding="4,4" ToolTip="Inserir uma forma vetorial">
+                <Button Click="AddShapeElementClick" Height="44" Margin="0" Padding="0" ToolTip="Inserir uma forma vetorial">
                   <StackPanel>
                     <Grid Width="24" Height="20">
-                      <Rectangle Width="16" Height="12" Stroke="#123740" StrokeThickness="1.5" Fill="Transparent"/>
-                      <Ellipse Width="6" Height="6" Fill="#123740" HorizontalAlignment="Right" VerticalAlignment="Top"/>
+                      <Rectangle Width="16" Height="12" Stroke="{DynamicResource AccentHoverBrush}" StrokeThickness="1.5" Fill="Transparent"/>
+                      <Ellipse Width="6" Height="6" Fill="{DynamicResource AccentHoverBrush}" HorizontalAlignment="Right" VerticalAlignment="Top"/>
                     </Grid>
-                    <TextBlock Text="Formas" FontSize="10" HorizontalAlignment="Center"/>
                   </StackPanel>
                   <Button.ContextMenu>
                     <ContextMenu>
@@ -215,22 +297,20 @@
                   </Button.ContextMenu>
                 </Button>
                 <Separator Margin="0,8"/>
-                <Button Click="DuplicateElementClick" Height="46" Padding="4,4" ToolTip="Duplicar o elemento selecionado (Ctrl+D)">
+                <Button Click="DuplicateElementClick" Height="40" Margin="0" Padding="0" ToolTip="Duplicar o elemento selecionado (Ctrl+D)">
                   <StackPanel>
                     <Grid Width="24" Height="20">
-                      <Rectangle Width="13" Height="13" Stroke="#123740" StrokeThickness="1.5" Fill="Transparent" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="2,0,0,1"/>
-                      <Rectangle Width="13" Height="13" Stroke="#123740" StrokeThickness="1.5" Fill="#F3F5F8" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,1,2,0"/>
+                      <Rectangle Width="13" Height="13" Stroke="{DynamicResource AccentHoverBrush}" StrokeThickness="1.5" Fill="Transparent" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="2,0,0,1"/>
+                      <Rectangle Width="13" Height="13" Stroke="{DynamicResource AccentHoverBrush}" StrokeThickness="1.5" Fill="#F3F5F8" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,1,2,0"/>
                     </Grid>
-                    <TextBlock Text="Duplicar" FontSize="10" HorizontalAlignment="Center"/>
                   </StackPanel>
                 </Button>
-                <Button Style="{StaticResource DangerButton}" Click="DeleteElementClick" Height="46" Padding="4,4" ToolTip="Excluir o elemento selecionado (Delete)">
+                <Button Style="{StaticResource DangerButton}" Click="DeleteElementClick" Height="40" Margin="0" Padding="0" ToolTip="Excluir o elemento selecionado (Delete)">
                   <StackPanel>
                     <Grid Width="20" Height="20">
                       <Rectangle Width="2" Height="18" Fill="#9B1C1C" RenderTransformOrigin="0.5,0.5"><Rectangle.RenderTransform><RotateTransform Angle="45"/></Rectangle.RenderTransform></Rectangle>
                       <Rectangle Width="2" Height="18" Fill="#9B1C1C" RenderTransformOrigin="0.5,0.5"><Rectangle.RenderTransform><RotateTransform Angle="-45"/></Rectangle.RenderTransform></Rectangle>
                     </Grid>
-                    <TextBlock Text="Excluir" FontSize="10" HorizontalAlignment="Center"/>
                   </StackPanel>
                 </Button>
               </StackPanel>
@@ -238,22 +318,22 @@
 
             <Grid Grid.Column="1">
               <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-              <Border Background="#F3F5F8" BorderBrush="#D5DBE3" BorderThickness="1,1,1,0" CornerRadius="4,4,0,0" Padding="6,3">
+              <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="6,3" Margin="0,0,0,8">
                 <DockPanel>
-                  <TextBlock x:Name="SelectionReadout" DockPanel.Dock="Right" VerticalAlignment="Center" Foreground="#526172" Margin="8,0,0,0"/>
+                  <TextBlock x:Name="SelectionReadout" DockPanel.Dock="Right" VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" Margin="8,0,0,0"/>
                   <WrapPanel>
                     <Button x:Name="UndoButton" FontFamily="Segoe UI Symbol" Content="↶ Desfazer" Click="UndoClick" ToolTip="Desfazer (Ctrl+Z)"/>
                     <Button x:Name="RedoButton" FontFamily="Segoe UI Symbol" Content="↷ Refazer" Click="RedoClick" ToolTip="Refazer (Ctrl+Y)"/>
                     <Border Width="1" Background="#D5DBE3" Margin="8,3"/>
                     <Button Width="30" Padding="4,4" Click="ZoomOutClick" ToolTip="Diminuir zoom (Ctrl + roda do mouse)">
-                      <Path Data="M 2,8 L 14,8" Stroke="#123740" StrokeThickness="1.8" Width="16" Height="16"/>
+                      <Path Data="M 2,8 L 14,8" Stroke="{DynamicResource AccentHoverBrush}" StrokeThickness="1.8" Width="16" Height="16"/>
                     </Button>
                     <TextBlock x:Name="ZoomText" Text="100%" Width="50" TextAlignment="Center" VerticalAlignment="Center"/>
                     <Button Width="30" Padding="4,4" Click="ZoomInClick" ToolTip="Aumentar zoom (Ctrl + roda do mouse)">
-                      <Path Data="M 2,8 L 14,8 M 8,2 L 8,14" Stroke="#123740" StrokeThickness="1.8" Width="16" Height="16"/>
+                      <Path Data="M 2,8 L 14,8 M 8,2 L 8,14" Stroke="{DynamicResource AccentHoverBrush}" StrokeThickness="1.8" Width="16" Height="16"/>
                     </Button>
                     <Button Content="Ajustar" Click="ZoomFitClick" ToolTip="Ajusta a placa à área visível"/>
-                    <Button Content="100%" Click="Zoom100Click"/>
+                    <Button Content="100%" Click="Zoom100Click" ToolTip="Exibe a placa em escala real"/>
                     <CheckBox x:Name="SnapCheck" Content="Ímãs" IsChecked="True" VerticalAlignment="Center" Margin="14,0,0,0" ToolTip="Alinha às bordas e ao centro da placa e aos outros elementos (mostra guias rosa)"/>
                     <CheckBox x:Name="GridCheck" Content="Grade" VerticalAlignment="Center" Margin="10,0,0,0" ToolTip="Mostra uma grade de 5 mm" Checked="GridToggled" Unchecked="GridToggled"/>
                   </WrapPanel>
@@ -279,49 +359,45 @@
               </Grid>
             </Grid>
 
-            <Border Grid.Column="2" Margin="6,0,0,0" Background="#F3F5F8" BorderBrush="#D5DBE3" BorderThickness="1" CornerRadius="4">
-              <Grid>
-                <Grid.RowDefinitions>
-                  <RowDefinition Height="*"/>
-                  <RowDefinition Height="5"/>
-                  <RowDefinition Height="190"/>
-                </Grid.RowDefinitions>
-                <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
+            <Border Grid.Column="2" Margin="8,0,0,0" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="{StaticResource CardRadius}">
+              <TabControl Margin="4">
+                <TabItem Header="Propriedades">
+                  <ScrollViewer VerticalScrollBarVisibility="Auto">
                   <StackPanel Margin="10">
-                    <TextBlock x:Name="InspectorTitle" Text="Placa" FontSize="15" FontWeight="Bold" Foreground="#102C46" Margin="0,0,0,8"/>
+                    <TextBlock x:Name="InspectorTitle" Text="Placa" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,0,0,8"/>
 
                     <StackPanel x:Name="PlatePanel">
-                      <TextBlock Text="Nome do layout" FontSize="11" Foreground="#526172"/>
+                      <TextBlock Text="Nome do layout" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
                       <TextBox x:Name="PlateNameBox" TextChanged="PlateNameChanged"/>
                       <Grid Margin="0,6,0,0">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <StackPanel><TextBlock Text="Largura (mm)" FontSize="11" Foreground="#526172"/><TextBox x:Name="PlateWidthBox" LostFocus="NumericBoxCommit" KeyDown="NumericBoxKeyDown"/></StackPanel>
-                        <StackPanel Grid.Column="1"><TextBlock Text="Altura (mm)" FontSize="11" Foreground="#526172"/><TextBox x:Name="PlateHeightBox" LostFocus="NumericBoxCommit" KeyDown="NumericBoxKeyDown"/></StackPanel>
+                        <StackPanel><TextBlock Text="Largura (mm)" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/><TextBox x:Name="PlateWidthBox" LostFocus="NumericBoxCommit" KeyDown="NumericBoxKeyDown"/></StackPanel>
+                        <StackPanel Grid.Column="1"><TextBlock Text="Altura (mm)" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/><TextBox x:Name="PlateHeightBox" LostFocus="NumericBoxCommit" KeyDown="NumericBoxKeyDown"/></StackPanel>
                       </Grid>
-                      <TextBlock Text="Cor de fundo da placa" FontSize="11" Foreground="#526172" Margin="0,6,0,0"/>
+                      <TextBlock Text="Cor de fundo da placa" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,0"/>
                       <StackPanel Orientation="Horizontal">
                         <Button x:Name="PlateColorButton" Tag="plate" Width="34" Height="24" Click="PickColorClick" ToolTip="Escolher cor"/>
                         <TextBox x:Name="PlateColorBox" Tag="plate" Width="100" LostFocus="ColorBoxCommit" KeyDown="ColorBoxKeyDown"/>
                       </StackPanel>
-                      <TextBlock Margin="0,12,0,0" TextWrapping="Wrap" Foreground="#6B7785" FontSize="11" Text="Clique em um elemento para editar. Arraste para mover e use as alças para redimensionar; o texto acompanha o tamanho da caixa. Setas ajustam a posição (Shift = 5 mm, Ctrl = 0,1 mm). Imagens ficam sempre ao fundo."/>
+                      <TextBlock Margin="0,12,0,0" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" Text="Clique em um elemento para editar. Arraste para mover e use as alças para redimensionar; o texto acompanha o tamanho da caixa. Setas ajustam a posição (Shift = 5 mm, Ctrl = 0,1 mm). Imagens ficam sempre ao fundo."/>
                     </StackPanel>
 
                     <StackPanel x:Name="ElementPanel" Visibility="Collapsed">
                       <Grid>
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-                        <TextBlock Text="X (mm)" FontSize="11" Foreground="#526172"/>
-                        <TextBlock Grid.Column="1" Text="Y (mm)" FontSize="11" Foreground="#526172"/>
+                        <TextBlock Text="X (mm)" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                        <TextBlock Grid.Column="1" Text="Y (mm)" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
                         <TextBox x:Name="PosXBox" Grid.Row="1" LostFocus="NumericBoxCommit" KeyDown="NumericBoxKeyDown"/>
                         <TextBox x:Name="PosYBox" Grid.Row="1" Grid.Column="1" LostFocus="NumericBoxCommit" KeyDown="NumericBoxKeyDown"/>
                       </Grid>
                       <StackPanel Margin="0,6,0,0">
-                        <TextBlock Text="Rotação (graus)" FontSize="11" Foreground="#526172"/>
+                        <TextBlock Text="Rotação (graus)" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
                         <TextBox x:Name="RotationBox" LostFocus="NumericBoxCommit" KeyDown="NumericBoxKeyDown" ToolTip="Ângulo no sentido horário"/>
                       </StackPanel>
 
                       <StackPanel x:Name="TextPanel" Margin="0,8,0,0">
-                        <TextBlock Text="Texto" FontSize="11" Foreground="#526172"/>
+                        <TextBlock Text="Texto" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
                         <TextBox x:Name="TextContentBox" MinHeight="44" AcceptsReturn="True" TextWrapping="Wrap"
                                  VerticalScrollBarVisibility="Auto" TextChanged="TextContentChanged"
                                  SelectionChanged="TextSelectionChanged" PreviewKeyDown="TextContentPreviewKeyDown"/>
@@ -342,7 +418,7 @@
                           <ComboBoxItem Content="Família" Tag="familia"/>
                           <ComboBoxItem Content="Descrição da família" Tag="descricao_familia"/>
                         </ComboBox>
-                        <TextBlock Text="Fonte e tamanho" FontSize="11" Foreground="#526172" Margin="0,6,0,0"/>
+                        <TextBlock Text="Fonte e tamanho" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,0"/>
                         <StackPanel Orientation="Horizontal">
                         <Button x:Name="FontButton" Click="InspectorFontClick" HorizontalContentAlignment="Stretch" ToolTip="Escolher o tipo de letra (lista com busca)">
                           <DockPanel LastChildFill="True">
@@ -363,7 +439,7 @@
                           <ToggleButton x:Name="AlignCenterToggle" Content="↔" FontFamily="Segoe UI Symbol" Tag="Center" Width="32" Height="26" Margin="3" Click="AlignClick" ToolTip="Centralizar"/>
                           <ToggleButton x:Name="AlignRightToggle" Content="⇥" FontFamily="Segoe UI Symbol" Tag="Right" Width="32" Height="26" Margin="3" Click="AlignClick" ToolTip="Alinhar à direita"/>
                         </StackPanel>
-                        <TextBlock Text="Cor do texto" FontSize="11" Foreground="#526172" Margin="0,6,0,0"/>
+                        <TextBlock Text="Cor do texto" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,0"/>
                         <StackPanel Orientation="Horizontal">
                           <Button x:Name="TextColorButton" Tag="text" Width="34" Height="24" Click="PickColorClick" ToolTip="Escolher cor"/>
                           <TextBox x:Name="TextColorBox" Tag="text" Width="100" LostFocus="ColorBoxCommit" KeyDown="ColorBoxKeyDown"/>
@@ -371,21 +447,21 @@
                       </StackPanel>
 
                       <StackPanel x:Name="ImagePanel" Margin="0,8,0,0" Visibility="Collapsed">
-                        <TextBlock Text="Imagem" FontSize="11" Foreground="#526172"/>
+                        <TextBlock Text="Imagem" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
                         <ComboBox x:Name="ImageSourceBox" DisplayMemberPath="Name" SelectedValuePath="Id" SelectionChanged="ImageSourceChanged" ToolTip="Imagem fixa da biblioteca ou espaço para a imagem do produto/família"/>
                       </StackPanel>
 
                       <StackPanel x:Name="ShapePanel" Margin="0,8,0,0" Visibility="Collapsed">
-                        <TextBlock Text="Contorno da forma" FontSize="11" Foreground="#526172"/>
+                        <TextBlock Text="Contorno da forma" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
                         <StackPanel Orientation="Horizontal">
                           <Button x:Name="StrokeColorButton" Tag="stroke" Width="34" Height="24" Click="PickColorClick" ToolTip="Escolher cor do contorno"/>
                           <TextBox x:Name="StrokeColorBox" Tag="stroke" Width="100" LostFocus="ColorBoxCommit" KeyDown="ColorBoxKeyDown"/>
                         </StackPanel>
-                        <TextBlock Text="Espessura do contorno (mm)" FontSize="11" Foreground="#526172" Margin="0,6,0,0"/>
+                        <TextBlock Text="Espessura do contorno (mm)" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,0"/>
                         <TextBox x:Name="StrokeWidthBox" LostFocus="NumericBoxCommit" KeyDown="NumericBoxKeyDown"/>
                       </StackPanel>
 
-                      <TextBlock Text="Fundo do elemento" FontSize="11" Foreground="#526172" Margin="0,8,0,0"/>
+                      <TextBlock Text="Fundo do elemento" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,8,0,0"/>
                       <StackPanel Orientation="Horizontal">
                         <Button x:Name="BackColorButton" Tag="back" Width="34" Height="24" Click="PickColorClick" ToolTip="Escolher cor"/>
                         <TextBox x:Name="BackColorBox" Tag="back" Width="100" LostFocus="ColorBoxCommit" KeyDown="ColorBoxKeyDown"/>
@@ -393,21 +469,20 @@
                       </StackPanel>
                     </StackPanel>
                   </StackPanel>
-                </ScrollViewer>
-
-                <GridSplitter Grid.Row="1" Height="5" HorizontalAlignment="Stretch" Background="#D5DBE3" ResizeDirection="Rows"/>
-
-                <DockPanel Grid.Row="2" Margin="8,4,8,8">
+                  </ScrollViewer>
+                </TabItem>
+                <TabItem Header="Camadas">
+                <DockPanel Margin="8,4,8,8">
                   <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                       <Button Width="28" Padding="4" Click="LayerForwardClick" ToolTip="Trazer para frente">
-                        <Path Data="M 2,11 L 8,5 L 14,11 M 8,5 L 8,17" Stroke="#123740" StrokeThickness="1.6" Width="16" Height="16"/>
+                        <Path Data="M 2,11 L 8,5 L 14,11 M 8,5 L 8,17" Stroke="{DynamicResource AccentHoverBrush}" StrokeThickness="1.6" Width="16" Height="16"/>
                       </Button>
                       <Button Width="28" Padding="4" Click="LayerBackwardClick" ToolTip="Enviar para trás">
-                        <Path Data="M 2,7 L 8,13 L 14,7 M 8,1 L 8,13" Stroke="#123740" StrokeThickness="1.6" Width="16" Height="16"/>
+                        <Path Data="M 2,7 L 8,13 L 14,7 M 8,1 L 8,13" Stroke="{DynamicResource AccentHoverBrush}" StrokeThickness="1.6" Width="16" Height="16"/>
                       </Button>
                     </StackPanel>
-                    <TextBlock Text="Camadas" FontWeight="SemiBold" Foreground="#102C46" VerticalAlignment="Center"/>
+                    <TextBlock Text="Camadas" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center"/>
                   </DockPanel>
                   <ListBox x:Name="LayersList" SelectionMode="Extended" SelectionChanged="LayersSelectionChanged" ToolTip="Ctrl+clique ou Shift+clique para selecionar várias camadas.">
                     <ListBox.ItemTemplate>
@@ -420,61 +495,163 @@
                     </ListBox.ItemTemplate>
                   </ListBox>
                 </DockPanel>
-              </Grid>
+                </TabItem>
+              </TabControl>
             </Border>
           </Grid>
         </DockPanel>
+        </Border>
       </TabItem>
-      <TabItem Header="3. Lote e impressão">
+      <TabItem Header="Lote e impressão">
+        <Border Background="{DynamicResource CanvasBrush}" Margin="0">
         <DockPanel Margin="12">
           <StackPanel DockPanel.Dock="Top">
-            <WrapPanel>
-              <TextBlock Text="Layout:" VerticalAlignment="Center"/><ComboBox x:Name="BatchTemplateBox" DisplayMemberPath="Name" Width="210"/>
-              <TextBlock Text="Data de venda:" VerticalAlignment="Center"/><DatePicker x:Name="SaleDate" Width="130" Margin="5"/>
-              <ComboBox x:Name="PaperBox" SelectedIndex="0" Width="100"><ComboBoxItem Content="A4"/><ComboBoxItem Content="A3"/><ComboBoxItem Content="A5"/></ComboBox>
-              <CheckBox x:Name="Landscape" Content="Paisagem" VerticalAlignment="Center" Margin="8"/>
-              <TextBlock Text="Margens mm — Sup." VerticalAlignment="Center"/><TextBox x:Name="MarginTopText" Width="42" Text="7" ToolTip="Margem superior"/>
-              <TextBlock Text="Dir." VerticalAlignment="Center"/><TextBox x:Name="MarginRightText" Width="42" Text="7" ToolTip="Margem direita"/>
-              <TextBlock Text="Inf." VerticalAlignment="Center"/><TextBox x:Name="MarginBottomText" Width="42" Text="7" ToolTip="Margem inferior"/>
-              <TextBlock Text="Esq." VerticalAlignment="Center"/><TextBox x:Name="MarginLeftText" Width="42" Text="7" ToolTip="Margem esquerda"/>
-              <TextBlock Text="Espaço mm" VerticalAlignment="Center"/><TextBox x:Name="GapText" Width="50" Text="3"/>
-              <CheckBox x:Name="CutMarks" Content="Contorno de corte" VerticalAlignment="Center" IsChecked="True" Margin="8"/>
-            </WrapPanel>
-            <WrapPanel>
-              <Button Content="Gerar prévia" Click="GenerateClick"/><Button Content="Imprimir / PDF" Click="PrintClick"/>
-              <Button Style="{StaticResource DangerButton}" Content="Remover destacados" Click="RemoveBatchItemClick" ToolTip="Remove as linhas destacadas do lote (Ctrl/Shift+clique para várias). Atalho: Delete"/><Button Content="Limpar lote" Click="ClearBatchClick"/>
-            </WrapPanel>
+            <StackPanel Margin="4,2,4,8">
+                <TextBlock Text="Lote e impressão" Style="{StaticResource PageTitle}"/>
+                <TextBlock Text="Confira os itens e as opções da página; gere a prévia antes de imprimir." Style="{StaticResource PageSubtitle}"/>
+            </StackPanel>
+            <Border Style="{StaticResource SurfaceCard}" Padding="10" Margin="0,0,0,8">
+                <Grid x:Name="BatchSettingsGrid">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="1.2*"/>
+                  <ColumnDefinition Width="1.2*"/>
+                  <ColumnDefinition Width="1.1*"/>
+                  <ColumnDefinition Width="2.2*"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                  <StackPanel x:Name="BatchTemplateSetting">
+                  <TextBlock Text="Layout da placa" Style="{StaticResource GroupLabel}"/>
+                  <ComboBox x:Name="BatchTemplateBox" DisplayMemberPath="Name"/>
+                </StackPanel>
+                <StackPanel x:Name="BatchDateSetting" Grid.Column="1">
+                  <TextBlock Text="Data de venda" Style="{StaticResource GroupLabel}"/>
+                  <DatePicker x:Name="SaleDate" Margin="3"/>
+                </StackPanel>
+                <StackPanel x:Name="BatchPaperSetting" Grid.Column="2">
+                  <TextBlock Text="Papel" Style="{StaticResource GroupLabel}"/>
+                  <ComboBox x:Name="PaperBox" SelectedIndex="0"><ComboBoxItem Content="A4"/><ComboBoxItem Content="A3"/><ComboBoxItem Content="A5"/></ComboBox>
+                  <CheckBox x:Name="Landscape" Content="Paisagem" Margin="6,2"/>
+                </StackPanel>
+                <GroupBox x:Name="PageMarginsGroup" Grid.Column="3" Header="Margens da página (mm)" Margin="3" Padding="6">
+                  <StackPanel>
+                    <WrapPanel>
+                      <StackPanel><TextBlock Text="Superior" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}"/><TextBox x:Name="MarginTopText" Width="58" Text="7"/></StackPanel>
+                      <StackPanel><TextBlock Text="Direita" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}"/><TextBox x:Name="MarginRightText" Width="58" Text="7"/></StackPanel>
+                      <StackPanel><TextBlock Text="Inferior" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}"/><TextBox x:Name="MarginBottomText" Width="58" Text="7"/></StackPanel>
+                      <StackPanel><TextBlock Text="Esquerda" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}"/><TextBox x:Name="MarginLeftText" Width="58" Text="7"/></StackPanel>
+                      <StackPanel><TextBlock Text="Espaço" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}"/><TextBox x:Name="GapText" Width="58" Text="3" ToolTip="Espaço entre placas, em milímetros"/></StackPanel>
+                    </WrapPanel>
+                    <CheckBox x:Name="CutMarks" Content="Contorno de corte" IsChecked="True" Margin="6,2"/>
+                  </StackPanel>
+                </GroupBox>
+              </Grid>
+            </Border>
+            <Border Background="{DynamicResource AccentSoftBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="{StaticResource CardRadius}" Padding="4" Margin="0,0,0,8">
+              <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                  <Button Style="{StaticResource DangerButton}" Content="Remover destacados" Click="RemoveBatchItemClick" ToolTip="Remove as linhas destacadas do lote. Atalho: Delete"/>
+                  <Button Content="Limpar lote" Click="ClearBatchClick"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal">
+                  <Button Style="{StaticResource PrimaryButton}" Click="GenerateClick">
+                    <StackPanel Orientation="Horizontal">
+                      <Grid Width="18" Height="18" Margin="0,0,6,0">
+                        <Path Data="M 1,9 C 5,3 13,3 17,9 C 13,15 5,15 1,9 Z" Stroke="White" StrokeThickness="1.5"/>
+                        <Ellipse Width="4" Height="4" Stroke="White" StrokeThickness="1.4"/>
+                      </Grid>
+                      <TextBlock Text="Gerar prévia" VerticalAlignment="Center"/>
+                    </StackPanel>
+                  </Button>
+                  <Button Click="PrintClick" ToolTip="Imprimir ou salvar como PDF">
+                    <StackPanel Orientation="Horizontal">
+                      <Path Data="M 6,9 L 6,3 L 18,3 L 18,9 M 6,17 L 3,17 L 3,10 L 21,10 L 21,17 L 18,17 M 6,14 L 18,14 L 18,21 L 6,21 Z" Stroke="{DynamicResource AccentHoverBrush}" StrokeThickness="1.5" Width="18" Height="18" Margin="0,0,6,0"/>
+                      <TextBlock Text="Imprimir / PDF" VerticalAlignment="Center"/>
+                    </StackPanel>
+                  </Button>
+                </StackPanel>
+              </DockPanel>
+            </Border>
           </StackPanel>
           <Grid>
             <Grid.ColumnDefinitions><ColumnDefinition Width="2*"/><ColumnDefinition Width="3*"/></Grid.ColumnDefinitions>
-            <DataGrid x:Name="BatchGrid" Margin="0,8,10,0" SelectionMode="Extended" PreviewKeyDown="BatchGridKeyDown">
-              <DataGrid.Columns><DataGridTextColumn Header="Produto" Binding="{Binding Item.Description}" Width="*" IsReadOnly="True"/><DataGridTextColumn Header="Cópias" Binding="{Binding Copies}" Width="65"/></DataGrid.Columns>
-            </DataGrid>
-            <DocumentViewer x:Name="DocumentPreview" Grid.Column="1"/>
+            <Grid Margin="0,4,10,0">
+              <DataGrid x:Name="BatchGrid" SelectionMode="Extended" PreviewKeyDown="BatchGridKeyDown" RowStyle="{StaticResource GridRowStyle}">
+                <DataGrid.Columns>
+                  <DataGridTextColumn Header="Produto" Binding="{Binding Item.Description}" Width="*" IsReadOnly="True"/>
+                  <DataGridTextColumn Header="Cópias" Binding="{Binding Copies}" Width="85" MinWidth="85" ElementStyle="{StaticResource NumericCellText}"/>
+                </DataGrid.Columns>
+              </DataGrid>
+              <Border Background="{DynamicResource SurfaceBrush}">
+                <Border.Style>
+                  <Style TargetType="Border">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Style.Triggers>
+                      <DataTrigger Binding="{Binding HasItems, ElementName=BatchGrid}" Value="False"><Setter Property="Visibility" Value="Visible"/></DataTrigger>
+                    </Style.Triggers>
+                  </Style>
+                </Border.Style>
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24">
+                  <TextBlock Text="Seu lote está vazio" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" HorizontalAlignment="Center"/>
+                  <TextBlock Text="Escolha produtos para montar as placas." Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,10" HorizontalAlignment="Center"/>
+                  <Button Content="Ir para produtos" Click="GoProductsClick" HorizontalAlignment="Center"/>
+                </StackPanel>
+              </Border>
+            </Grid>
+            <Grid Grid.Column="1">
+              <DocumentViewer x:Name="DocumentPreview" PreviewKeyDown="DocumentPreviewKeyDown"/>
+              <Border Background="{DynamicResource CanvasBrush}">
+                <Border.Style>
+                  <Style TargetType="Border">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Style.Triggers>
+                      <DataTrigger Binding="{Binding Document, ElementName=DocumentPreview}" Value="{x:Null}"><Setter Property="Visibility" Value="Visible"/></DataTrigger>
+                    </Style.Triggers>
+                  </Style>
+                </Border.Style>
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24">
+                  <TextBlock Text="A prévia aparecerá aqui" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" HorizontalAlignment="Center"/>
+                  <TextBlock Text="Adicione itens ao lote e gere uma prévia para conferir a impressão." TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,10" HorizontalAlignment="Center" TextAlignment="Center"/>
+                  <Button Content="Ir para produtos" Click="GoProductsClick" HorizontalAlignment="Center"/>
+                </StackPanel>
+              </Border>
+            </Grid>
           </Grid>
         </DockPanel>
+        </Border>
       </TabItem>
-      <TabItem Header="4. Histórico">
+      <TabItem Header="Histórico">
+        <Border Background="{DynamicResource CanvasBrush}" Margin="0">
         <DockPanel Margin="12">
-          <WrapPanel DockPanel.Dock="Top"><Button Content="Atualizar" Click="RefreshHistoryClick"/><Button Content="Carregar cópia do lote" Click="LoadHistoryClick"/><TextBlock Text="Reimpressões verificam a validade na nova data de venda." VerticalAlignment="Center" Margin="10"/></WrapPanel>
-          <DataGrid x:Name="HistoryGrid" IsReadOnly="True" SelectionMode="Single"><DataGrid.Columns>
-            <DataGridTextColumn Header="Data" Binding="{Binding CreatedAt}" Width="230"/><DataGridTextColumn Header="Estado" Binding="{Binding Status}" Width="180"/>
+          <StackPanel DockPanel.Dock="Top" Margin="4,2,4,10">
+            <TextBlock Text="Histórico de impressão" Style="{StaticResource PageTitle}"/>
+            <WrapPanel>
+              <Button Content="Atualizar" Click="RefreshHistoryClick"/>
+              <Button Content="Carregar cópia do lote" Click="LoadHistoryClick"/>
+              <TextBlock Text="Reimpressões verificam a validade na nova data de venda." VerticalAlignment="Center" Margin="10"/>
+            </WrapPanel>
+          </StackPanel>
+          <DataGrid x:Name="HistoryGrid" IsReadOnly="True" SelectionMode="Single" RowStyle="{StaticResource GridRowStyle}"><DataGrid.Columns>
+            <DataGridTextColumn Header="Data" Binding="{Binding CreatedAt, StringFormat='dd/MM/yyyy HH:mm'}" Width="150"/><DataGridTextColumn Header="Estado" Binding="{Binding Status}" Width="180"/>
             <DataGridTextColumn Header="Layout" Binding="{Binding Batch.Template.Name}" Width="200"/><DataGridTextColumn Header="Detalhes" Binding="{Binding Detail}" Width="*"/>
           </DataGrid.Columns></DataGrid>
         </DockPanel>
+        </Border>
       </TabItem>
-      <TabItem Header="5. Gerenciar importações">
+      <TabItem Header="Importações">
+        <Border Background="{DynamicResource CanvasBrush}" Margin="0">
         <DockPanel Margin="12">
           <StackPanel DockPanel.Dock="Top">
-            <TextBlock Text="Gerenciar importações e limpar condições vencidas" FontSize="18" FontWeight="Bold" Margin="0,0,0,10"/>
+            <TextBlock Text="Gerenciar importações" Style="{StaticResource PageTitle}"/>
+            <TextBlock Text="Consulte os arquivos importados e remova dados vencidos com segurança." Style="{StaticResource PageSubtitle}"/>
             <WrapPanel>
               <Button Content="Atualizar lista" Click="RefreshImportsClick"/>
               <Button Style="{StaticResource DangerButton}" Content="Excluir importações selecionadas" Click="DeleteImportClick" ToolTip="Selecione uma ou mais linhas (Ctrl/Shift+clique). Atalho: Delete"/>
               <Button Content="Limpar ofertas e promoções vencidas" Click="CleanExpiredClick"/>
             </WrapPanel>
-            <TextBlock Text="Um backup é criado antes de qualquer exclusão. Layouts e histórico são preservados. Importações antigas sem vínculos não podem ser excluídas individualmente." TextWrapping="Wrap" Margin="4,10" Foreground="#526172"/>
+            <TextBlock Text="Um backup é criado antes de qualquer exclusão. Layouts e histórico são preservados. Importações antigas sem vínculos não podem ser excluídas individualmente." TextWrapping="Wrap" Margin="4,10" Foreground="{DynamicResource TextSecondaryBrush}"/>
           </StackPanel>
-          <DataGrid x:Name="ImportsGrid" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Extended" PreviewKeyDown="ImportsGridKeyDown">
+          <Grid>
+          <DataGrid x:Name="ImportsGrid" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Extended" PreviewKeyDown="ImportsGridKeyDown" RowStyle="{StaticResource GridRowStyle}">
             <DataGrid.Resources>
               <Style x:Key="CellText" TargetType="TextBlock"><Setter Property="VerticalAlignment" Value="Center"/><Setter Property="Margin" Value="6,0"/></Style>
               <Style x:Key="RightText" TargetType="TextBlock" BasedOn="{StaticResource CellText}"><Setter Property="TextAlignment" Value="Right"/></Style>
@@ -490,20 +667,43 @@
               <DataGridTextColumn Header="Situação" Binding="{Binding Status}" SortMemberPath="Record.Managed" Width="190" ElementStyle="{StaticResource ImportStatusText}"/>
             </DataGrid.Columns>
           </DataGrid>
+          <Border Background="{DynamicResource SurfaceBrush}">
+            <Border.Style>
+              <Style TargetType="Border">
+                <Setter Property="Visibility" Value="Collapsed"/>
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding HasItems, ElementName=ImportsGrid}" Value="False"><Setter Property="Visibility" Value="Visible"/></DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </Border.Style>
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24">
+              <TextBlock Text="Nenhuma importação encontrada" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" HorizontalAlignment="Center"/>
+              <TextBlock Text="Importe uma planilha para começar a carregar produtos." Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,10" HorizontalAlignment="Center"/>
+              <Button Content="Importar planilhas" Style="{StaticResource PrimaryButton}" Click="ImportClick" HorizontalAlignment="Center"/>
+            </StackPanel>
+          </Border>
+          </Grid>
         </DockPanel>
+        </Border>
       </TabItem>
-      <TabItem Header="6. Imagens">
+      <TabItem Header="Imagens">
+        <Border Background="{DynamicResource CanvasBrush}" Margin="0">
         <DockPanel Margin="12">
           <StackPanel DockPanel.Dock="Top">
+            <TextBlock Text="Biblioteca de imagens" Style="{StaticResource PageTitle}"/>
+            <TextBlock Text="Organize imagens de produtos, famílias e layouts em um só lugar." Style="{StaticResource PageSubtitle}"/>
             <WrapPanel>
               <Button Content="Adicionar imagens…" Click="AddImageClick"/>
               <Button Content="Importar pasta (nome = código do produto)" Click="ImportImageFolderClick" ToolTip="Ex.: 10486.jpg é vinculada ao produto 10486"/>
               <Button Content="Importar pasta (nome = código da família)" Click="ImportFamilyImageFolderClick" ToolTip="Ex.: 1124.jpg é vinculada à família 1124"/>
               <Button Style="{StaticResource DangerButton}" Content="Excluir selecionadas" Click="DeleteImageClick" ToolTip="Selecione uma ou mais imagens (Ctrl/Shift+clique). Atalho: Delete"/>
             </WrapPanel>
-            <TextBlock TextWrapping="Wrap" Foreground="#526172" Margin="4,10" Text="Cada imagem pode estar ligada ao produto, à família ou ao layout. Logos e fotos ficam guardados no banco de dados (reduzidas para até 1000 px). No layout (aba 2), use Adicionar imagem para inserir uma imagem do computador ou da biblioteca (fixa, como um logo), ou um espaço para a imagem do produto ou da família. Imagem do produto: botão Imagem do produto na aba 1, ou importe uma pasta com arquivos nomeados pelo código (ex.: 10486.jpg). Imagem da família: botão Imagem da família na aba 1, ou importe uma pasta nomeada pelo código da família. Dê dois cliques no nome para renomear."/>
+            <Expander Header="Como usar a biblioteca de imagens" Margin="0,4,0,8">
+              <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" Margin="8,6" Text="Cada imagem pode estar ligada ao produto, à família ou ao layout. Logos e fotos ficam guardados no banco de dados (reduzidas para até 1000 px). No layout (aba 2), use Adicionar imagem para inserir uma imagem do computador ou da biblioteca (fixa, como um logo), ou um espaço para a imagem do produto ou da família. Imagem do produto: botão Imagem do produto na aba 1, ou importe uma pasta com arquivos nomeados pelo código (ex.: 10486.jpg). Imagem da família: botão Imagem da família na aba 1, ou importe uma pasta nomeada pelo código da família. Dê dois cliques no nome para renomear."/>
+            </Expander>
           </StackPanel>
-          <DataGrid x:Name="ImagesGrid" AutoGenerateColumns="False" SelectionMode="Extended" RowHeight="56" CellEditEnding="ImagesCellEditEnding" PreviewKeyDown="ImagesGridKeyDown">
+          <Grid>
+          <DataGrid x:Name="ImagesGrid" AutoGenerateColumns="False" SelectionMode="Extended" RowHeight="56" CellEditEnding="ImagesCellEditEnding" PreviewKeyDown="ImagesGridKeyDown" RowStyle="{StaticResource GridRowStyle}">
             <DataGrid.Columns>
               <DataGridTemplateColumn Header="Imagem" Width="90" IsReadOnly="True">
                 <DataGridTemplateColumn.CellTemplate>
@@ -511,14 +711,31 @@
                 </DataGridTemplateColumn.CellTemplate>
               </DataGridTemplateColumn>
               <DataGridTextColumn Header="Nome" Binding="{Binding Name}" Width="*"/>
-              <DataGridTextColumn Header="Tamanho" Binding="{Binding Size}" Width="90" IsReadOnly="True"/>
-              <DataGridTextColumn Header="Produtos" Binding="{Binding Products}" Width="90" IsReadOnly="True"/>
-              <DataGridTextColumn Header="Famílias" Binding="{Binding Families}" Width="90" IsReadOnly="True"/>
-              <DataGridTextColumn Header="Layouts" Binding="{Binding Layouts}" Width="90" IsReadOnly="True"/>
+              <DataGridTextColumn Header="Tamanho" Binding="{Binding Size}" Width="90" IsReadOnly="True" ElementStyle="{StaticResource NumericCellText}"/>
+              <DataGridTextColumn Header="Produtos" Binding="{Binding Products}" Width="90" IsReadOnly="True" ElementStyle="{StaticResource NumericCellText}"/>
+              <DataGridTextColumn Header="Famílias" Binding="{Binding Families}" Width="90" IsReadOnly="True" ElementStyle="{StaticResource NumericCellText}"/>
+              <DataGridTextColumn Header="Layouts" Binding="{Binding Layouts}" Width="90" IsReadOnly="True" ElementStyle="{StaticResource NumericCellText}"/>
             </DataGrid.Columns>
           </DataGrid>
+          <Border Background="{DynamicResource SurfaceBrush}">
+            <Border.Style>
+              <Style TargetType="Border">
+                <Setter Property="Visibility" Value="Collapsed"/>
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding HasItems, ElementName=ImagesGrid}" Value="False"><Setter Property="Visibility" Value="Visible"/></DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </Border.Style>
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24">
+              <TextBlock Text="Sua biblioteca está vazia" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" HorizontalAlignment="Center"/>
+              <TextBlock Text="Adicione imagens ou importe uma pasta para vinculá-las aos produtos." TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,10" HorizontalAlignment="Center" TextAlignment="Center"/>
+              <Button Content="Adicionar imagens" Style="{StaticResource PrimaryButton}" Click="AddImageClick" HorizontalAlignment="Center"/>
+            </StackPanel>
+          </Border>
+          </Grid>
         </DockPanel>
+        </Border>
       </TabItem>
     </TabControl>
   </DockPanel>
-</Window>
+</mah:MetroWindow>
