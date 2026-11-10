@@ -128,9 +128,7 @@ public partial class MainWindow
         fitMode = true;
         ZoomFit();
         ResetHistory();
-        PreviewStatus.Text = editing is null
-            ? "Selecione ou crie um layout."
-            : "Edite visualmente e clique em Salvar layout para guardar as alterações.";
+                 
     }
 
     private void RebuildDesigner()
