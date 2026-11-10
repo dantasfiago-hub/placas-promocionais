@@ -222,7 +222,6 @@
               <Button Style="{StaticResource DangerButton}" Content="Excluir" Click="DeleteTemplateClick"/>
             </WrapPanel>
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
-              <TextBlock x:Name="PreviewStatus" VerticalAlignment="Center" Margin="8,0,8,0" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" Text="Selecione ou crie um layout."/>
               <Button Style="{StaticResource PrimaryButton}" Content="Salvar layout" Click="SaveTemplateClick"/>
             </StackPanel>
           </DockPanel>
