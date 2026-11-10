@@ -500,14 +500,15 @@ public partial class MainWindow : MetroWindow
         var window = new Window
         {
             Owner = this, Title = creating ? "Cadastrar produto / condição" : "Editar produto / condição",
-            Width = 650, Height = 770, MinHeight = 550, WindowStartupLocation = WindowStartupLocation.CenterOwner
+            Width = 580, Height = 680, MinWidth = 500, MinHeight = 480,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner
         };
-        var panel = new StackPanel { Margin = new Thickness(20) };
+        var panel = new StackPanel { Margin = new Thickness(14) };
         var controls = new Dictionary<string, TextBox>();
         TextBox Field(string caption, string value)
         {
-            panel.Children.Add(new TextBlock { Text = caption, Margin = new Thickness(0, 8, 0, 2) });
-            var box = new TextBox { Text = value, MinWidth = 420 };
+            panel.Children.Add(new TextBlock { Text = caption, Margin = new Thickness(0, 5, 0, 2) });
+            var box = new TextBox { Text = value, MinWidth = 360 };
             panel.Children.Add(box); controls[caption] = box; return box;
         }
         Field("Código", item.DisplayCode);
