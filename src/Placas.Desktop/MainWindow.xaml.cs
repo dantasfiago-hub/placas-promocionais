@@ -354,7 +354,7 @@ public partial class MainWindow : MetroWindow
         MaxWidth = area.Width;
         MaxHeight = area.Height;
         Width = Math.Min(1280, area.Width);
-        Height = Math.Min(720, area.Height);
+        Height = Math.Min(900, area.Height);
         Left = area.Left + Math.Max(0, (area.Width - Width) / 2);
         Top = area.Top + Math.Max(0, (area.Height - Height) / 2);
     }
