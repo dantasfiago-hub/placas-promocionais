@@ -195,7 +195,7 @@ public partial class MainWindow
         try { return renderer.Element(element, designItem, placeholders: true); }
         catch (Exception ex) when (ex is FormatException or InvalidOperationException or NotSupportedException)
         {
-            PreviewStatus.Text = "Prévia: " + ex.Message;
+            App.Log(ex);
             return null;
         }
     }
@@ -674,7 +674,6 @@ public partial class MainWindow
         SelectElement(element);
         CommitHistory();
         if (focusText) { TextContentBox.Focus(); TextContentBox.SelectAll(); }
-        PreviewStatus.Text = "Elemento adicionado: arraste para posicionar e use as alças para ajustar o tamanho.";
     }
 
     private void OpenToolMenu(object sender)

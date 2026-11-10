@@ -875,7 +875,6 @@ public partial class MainWindow : MetroWindow
             Width = Math.Max(1, Math.Round(width, 1)), Height = Math.Max(1, Math.Round(height, 1))
         };
         AddElement(element);
-        PreviewStatus.Text = "Imagem inserida no layout: arraste para posicionar. Ela fica ao fundo e os textos aparecem por cima.";
     }
     private void InsertImageFromFileClick(object sender, RoutedEventArgs e) => Run(() =>
     {
