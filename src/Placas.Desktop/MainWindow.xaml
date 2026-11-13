@@ -134,9 +134,9 @@
             </Expander>
           </StackPanel>
           <Expander DockPanel.Dock="Bottom" Header="Legenda e dicas" Margin="0,8,0,0">
-            <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" Margin="4,6" Text="Marcar ou destacar: as ações valem para os itens marcados (caixa da primeira coluna); se nenhum estiver marcado, valem para as linhas destacadas (Ctrl/Shift+clique). Barra de espaço marca ou desmarca as linhas destacadas; Delete exclui. Busca limitada a 500 condições; os filtros de situação e família atuam sobre esse resultado. Cores: vermelho = vencida, amarelo = regra a confirmar, azul = futura. Passe o mouse sobre a linha para ver arquivo, aba e linha. Clique no cabeçalho para ordenar."/>
+            <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" Margin="4,6" Text="Marcar ou destacar: as ações valem para os itens carregados e marcados (caixa da primeira coluna); se nenhum estiver marcado, valem para as linhas destacadas (Ctrl/Shift+clique). Barra de espaço marca ou desmarca as linhas destacadas; Delete exclui. Os resultados são carregados conforme você rola a lista; os filtros de situação e família atuam sobre a busca completa. Cores: vermelho = vencida, amarelo = regra a confirmar, azul = futura. Passe o mouse sobre a linha para ver arquivo, aba e linha. Clique no cabeçalho para ordenar."/>
           </Expander>
-          <DataGrid x:Name="ProductsGrid" MinHeight="100" SelectionMode="Extended" RowHeight="42" SelectionChanged="ProductsSelectionChanged" PreviewKeyDown="ProductsGridKeyDown">
+          <DataGrid x:Name="ProductsGrid" MinHeight="100" SelectionMode="Extended" RowHeight="42" SelectionChanged="ProductsSelectionChanged" PreviewKeyDown="ProductsGridKeyDown" ScrollViewer.ScrollChanged="ProductsScrollChanged">
             <DataGrid.Resources>
               <Style x:Key="CellText" TargetType="TextBlock"><Setter Property="VerticalAlignment" Value="Center"/><Setter Property="Margin" Value="6,0"/></Style>
               <Style x:Key="RightText" TargetType="TextBlock" BasedOn="{StaticResource CellText}"><Setter Property="TextAlignment" Value="Right"/></Style>
@@ -172,7 +172,7 @@
             <DataGrid.Columns>
               <DataGridTemplateColumn Width="45" SortMemberPath="Selected">
                 <DataGridTemplateColumn.Header>
-                  <CheckBox HorizontalAlignment="Center" Click="MarkAllHeaderClick" ToolTip="Marcar ou desmarcar todos os exibidos"/>
+                  <CheckBox HorizontalAlignment="Center" Click="MarkAllHeaderClick" ToolTip="Marcar ou desmarcar todos os itens carregados"/>
                 </DataGridTemplateColumn.Header>
                 <DataGridTemplateColumn.CellTemplate>
                   <DataTemplate><CheckBox IsChecked="{Binding Selected, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Center" VerticalAlignment="Center"/></DataTemplate>

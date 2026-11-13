@@ -104,9 +104,15 @@ public partial class MainWindow : MetroWindow
     private readonly BatchService batchService = new();
     private readonly PlateRenderer renderer = new();
     private readonly ObservableCollection<BatchRow> basket = [];
-    private List<ProductRow> products = [];
+    private readonly ObservableCollection<ProductRow> products = [];
     private List<ProductRow> allProducts = [];
     private bool loadingFilters;
+    private bool loadingProductsPage;
+    private bool hasMoreProducts;
+    private int productSearchOffset;
+    private string productSearchText = "";
+    private SourceKind? productSearchSource;
+    private const int ProductPageSize = 100;
     private List<ImageChoice> imageChoices = [];
     private const string ImageFilter = "Imagens|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tif;*.tiff";
     private static readonly HashSet<string> ImageExtensions = [".png", ".jpg", ".jpeg", ".bmp", ".gif", ".tif", ".tiff"];
@@ -579,43 +585,89 @@ public partial class MainWindow : MetroWindow
 
     private void RefreshProducts()
     {
-        SourceKind? source = SourceFilter.SelectedIndex == 0 ? null : (SourceKind)(SourceFilter.SelectedIndex - 1);
-        allProducts = store.Search(SearchText.Text, source).Select(x => new ProductRow(x)).ToList();
-        foreach (var row in allProducts) row.PropertyChanged += OnProductRowChanged;
+        productSearchText = SearchText.Text;
+        productSearchSource = SourceFilter.SelectedIndex == 0 ? null : (SourceKind)(SourceFilter.SelectedIndex - 1);
+        productSearchOffset = 0;
+        hasMoreProducts = true;
+        allProducts.Clear();
+        products.Clear();
+        ProductsGrid.ItemsSource = products;
         var previous = FamilyFilter.SelectedItem as string;
-        var families = allProducts.Select(x => x.FamilyLabel).Where(f => !string.IsNullOrEmpty(f))
-            .Distinct(StringComparer.CurrentCultureIgnoreCase)
-            .Order(StringComparer.CurrentCultureIgnoreCase).ToList();
+        var families = store.SearchFamilies(productSearchText, productSearchSource);
         const string allFamilies = "Todas as famílias";
         loadingFilters = true;
         FamilyFilter.ItemsSource = new[] { allFamilies }.Concat(families).ToList();
         FamilyFilter.SelectedItem = previous is not null && families.Contains(previous) ? previous : allFamilies;
         loadingFilters = false;
         ApplyProductFilters();
+        LoadProductsUntilVisible();
     }
     private void ProductFilterChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (!loadingFilters) ApplyProductFilters();
+        if (loadingFilters) return;
+        ApplyProductFilters();
+        LoadProductsUntilVisible();
     }
     private void ApplyProductFilters()
     {
         if (ProductsGrid is null || StatusFilter is null || FamilyFilter is null) return;
-        var family = FamilyFilter.SelectedIndex > 0 ? FamilyFilter.SelectedItem as string : null;
-        IEnumerable<ProductRow> rows = allProducts;
-        rows = StatusFilter.SelectedIndex switch
-        {
-            1 => rows.Where(x => !x.IsExpired),
-            2 => rows.Where(x => x.IsExpired),
-            3 => rows.Where(x => x.Level is "attention" or "zero"),
-            _ => rows
-        };
-        if (family is not null)
-            rows = rows.Where(x => string.Equals(x.FamilyLabel, family, StringComparison.CurrentCultureIgnoreCase));
-        products = rows.ToList();
-        ProductsGrid.ItemsSource = products;
+        products.Clear();
+        foreach (var row in allProducts.Where(MatchesProductFilters))
+            products.Add(row);
         UpdateSelectionInfo();
+        UpdateProductStatus();
+    }
+    private bool MatchesProductFilters(ProductRow row)
+    {
+        var family = FamilyFilter.SelectedIndex > 0 ? FamilyFilter.SelectedItem as string : null;
+        var matchesSituation = StatusFilter.SelectedIndex switch
+        {
+            1 => !row.IsExpired,
+            2 => row.IsExpired,
+            3 => row.Level is "attention" or "zero",
+            _ => true
+        };
+        return matchesSituation && (family is null
+            || string.Equals(row.FamilyLabel, family, StringComparison.CurrentCultureIgnoreCase));
+    }
+    private void LoadNextProductsPage()
+    {
+        if (loadingProductsPage || !hasMoreProducts) return;
+        loadingProductsPage = true;
+        try
+        {
+            var items = store.SearchPage(productSearchText, productSearchSource, productSearchOffset, ProductPageSize);
+            productSearchOffset += items.Count;
+            hasMoreProducts = items.Count == ProductPageSize;
+            var rows = items.Select(x => new ProductRow(x)).ToList();
+            foreach (var row in rows)
+            {
+                row.PropertyChanged += OnProductRowChanged;
+                allProducts.Add(row);
+                if (MatchesProductFilters(row)) products.Add(row);
+            }
+            UpdateSelectionInfo();
+            UpdateProductStatus();
+        }
+        finally { loadingProductsPage = false; }
+    }
+    private void LoadProductsUntilVisible()
+    {
+        while (products.Count == 0 && hasMoreProducts)
+            LoadNextProductsPage();
+    }
+    private void ProductsScrollChanged(object sender, ScrollChangedEventArgs e)
+    {
+        if (e.OriginalSource is ScrollViewer scroll
+            && scroll.VerticalOffset + scroll.ViewportHeight >= scroll.ExtentHeight - 80)
+            LoadNextProductsPage();
+    }
+    private void UpdateProductStatus()
+    {
         var hidden = allProducts.Count - products.Count;
-        Status.Text = $"{products.Count} condições exibidas{(hidden > 0 ? $" ({hidden} ocultas pelos filtros)" : "")} • {basket.Count} produtos no lote.";
+        Status.Text = $"{products.Count} condições exibidas{(hidden > 0 ? $" ({hidden} ocultas pelos filtros)" : "")} • "
+            + (hasMoreProducts ? "role para carregar mais" : "fim dos resultados")
+            + $" • {basket.Count} produtos no lote.";
     }
     private void SearchClick(object sender, RoutedEventArgs e) => Run(RefreshProducts);
     private void SearchKeyDown(object sender, KeyEventArgs e) { if (e.Key == Key.Enter) Run(RefreshProducts); }

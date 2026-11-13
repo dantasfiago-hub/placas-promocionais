@@ -439,13 +439,17 @@ public sealed class SqliteStore : IStore
     private static string SearchKey(string value) => new(value.Normalize(NormalizationForm.FormD)
         .Where(c => CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark).Select(char.ToUpperInvariant).ToArray());
     public List<PriceItem> Search(string text, SourceKind? source, int limit = 500)
+        => SearchPage(text, source, 0, limit);
+
+    public List<PriceItem> SearchPage(string text, SourceKind? source, int offset, int limit)
     {
         using var db = Open(); using var command = db.CreateCommand();
-        command.CommandText = "SELECT json FROM items WHERE ($source IS NULL OR source=$source) AND (instr(search,$text)>0 OR code=$code) ORDER BY search,source LIMIT $limit";
+        command.CommandText = "SELECT json FROM items WHERE ($source IS NULL OR source=$source) AND (instr(search,$text)>0 OR code=$code) ORDER BY search,source,id LIMIT $limit OFFSET $offset";
         command.Parameters.AddWithValue("$source", source is null ? DBNull.Value : (object)(int)source);
         command.Parameters.AddWithValue("$text", SearchKey(text.Trim()));
         command.Parameters.AddWithValue("$code", text.Trim().TrimStart('0'));
-        command.Parameters.AddWithValue("$limit", Math.Clamp(limit, 1, 10000));
+        command.Parameters.AddWithValue("$limit", Math.Clamp(limit, 1, 1000));
+        command.Parameters.AddWithValue("$offset", Math.Max(0, offset));
         var families = LoadFamilies(db);
         var productImages = LoadProductImages(db);
         var familyImages = LoadFamilyImages(db);
@@ -463,6 +467,27 @@ public sealed class SqliteStore : IStore
         }
         return result;
     }
+
+    public List<string> SearchFamilies(string text, SourceKind? source)
+    {
+        using var db = Open(); using var command = db.CreateCommand();
+        command.CommandText = "SELECT DISTINCT json_extract(json,'$.Family') FROM items WHERE ($source IS NULL OR source=$source) AND (instr(search,$text)>0 OR code=$code) AND json_extract(json,'$.Family') IS NOT NULL AND json_extract(json,'$.Family')<>'' ORDER BY 1 COLLATE NOCASE";
+        command.Parameters.AddWithValue("$source", source is null ? DBNull.Value : (object)(int)source);
+        command.Parameters.AddWithValue("$text", SearchKey(text.Trim()));
+        command.Parameters.AddWithValue("$code", text.Trim().TrimStart('0'));
+        var families = LoadFamilies(db);
+        var labels = new HashSet<string>(StringComparer.CurrentCultureIgnoreCase);
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            var code = reader.GetString(0);
+            var label = families.TryGetValue(FamilyCode.Key(code), out var description)
+                ? $"{code} - {description}" : code;
+            labels.Add(label);
+        }
+        return labels.Order(StringComparer.CurrentCultureIgnoreCase).ToList();
+    }
+
     public void ConfirmPromotion(string itemId, QuantityRule rule)
     {
         if (rule == QuantityRule.Pending) throw new InvalidOperationException("Selecione uma regra confirmada.");

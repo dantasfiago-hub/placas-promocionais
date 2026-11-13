@@ -50,6 +50,15 @@ public interface IStore
         int limit = 500
     );
 
+    List<PriceItem> SearchPage(
+        string text,
+        SourceKind? source,
+        int offset,
+        int limit
+    );
+
+    List<string> SearchFamilies(string text, SourceKind? source);
+
     void ConfirmPromotion(string itemId, QuantityRule rule);
 
     List<PlateTemplate> Templates();

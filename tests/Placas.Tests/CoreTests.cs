@@ -75,6 +75,38 @@ public class CoreTests
         finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(dir, true); }
     }
 
+    [Fact] public void ProductSearchPagesReturnAllMatchingItemsAndFamilies()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var store = new SqliteStore(Path.Combine(dir, "test.db"));
+            var items = Enumerable.Range(1, 505)
+                .Select(index => Item() with
+                {
+                    Id = $"item:{index}",
+                    Code = index.ToString(),
+                    DisplayCode = index.ToString("D6"),
+                    Description = $"Produto {index}",
+                    Family = $"Família {index % 5}"
+                }).ToList();
+            store.Import(new ImportBatch("pages", "pages.xlsx", items, []));
+
+            var firstPage = store.SearchPage("", null, 0, 200);
+            var secondPage = store.SearchPage("", null, 200, 200);
+            var finalPage = store.SearchPage("", null, 400, 200);
+
+            Assert.Equal(200, firstPage.Count);
+            Assert.Equal(200, secondPage.Count);
+            Assert.Equal(105, finalPage.Count);
+            Assert.Equal(505, firstPage.Concat(secondPage).Concat(finalPage).Select(x => x.Id).Distinct().Count());
+            Assert.Equal(5, store.SearchFamilies("", null).Count);
+        }
+        finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(dir, true); }
+    }
+
+
     [Fact] public void CatalogFamilyIsAppliedToOfferImportedLater()
     {
         var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
