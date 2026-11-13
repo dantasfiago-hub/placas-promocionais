@@ -109,6 +109,7 @@ public partial class MainWindow : MetroWindow
     private bool loadingFilters;
     private bool loadingProductsPage;
     private bool hasMoreProducts;
+    private int productSearchGeneration;
     private int productSearchOffset;
     private string productSearchText = "";
     private SourceKind? productSearchSource;
@@ -583,8 +584,10 @@ public partial class MainWindow : MetroWindow
         window.ShowDialog();
     }
 
-    private void RefreshProducts()
+    private void RefreshProducts() => _ = RefreshProductsAsync();
+    private async Task RefreshProductsAsync()
     {
+        var generation = ++productSearchGeneration;
         productSearchText = SearchText.Text;
         productSearchSource = SourceFilter.SelectedIndex == 0 ? null : (SourceKind)(SourceFilter.SelectedIndex - 1);
         productSearchOffset = 0;
@@ -593,20 +596,32 @@ public partial class MainWindow : MetroWindow
         products.Clear();
         ProductsGrid.ItemsSource = products;
         var previous = FamilyFilter.SelectedItem as string;
-        var families = store.SearchFamilies(productSearchText, productSearchSource);
-        const string allFamilies = "Todas as famílias";
-        loadingFilters = true;
-        FamilyFilter.ItemsSource = new[] { allFamilies }.Concat(families).ToList();
-        FamilyFilter.SelectedItem = previous is not null && families.Contains(previous) ? previous : allFamilies;
-        loadingFilters = false;
-        ApplyProductFilters();
-        LoadProductsUntilVisible();
+        try
+        {
+            var searchText = productSearchText;
+            var searchSource = productSearchSource;
+            var families = await Task.Run(() => store.SearchFamilies(searchText, searchSource));
+            if (generation != productSearchGeneration) return;
+            const string allFamilies = "Todas as famílias";
+            loadingFilters = true;
+            FamilyFilter.ItemsSource = new[] { allFamilies }.Concat(families).ToList();
+            FamilyFilter.SelectedItem = previous is not null && families.Contains(previous) ? previous : allFamilies;
+            loadingFilters = false;
+            ApplyProductFilters();
+            await LoadProductsUntilVisibleAsync(generation);
+        }
+        catch (Exception ex)
+        {
+            loadingFilters = false;
+            App.Log(ex);
+            Status.Text = $"Falha ao carregar produtos: {ex.Message}";
+        }
     }
     private void ProductFilterChanged(object sender, SelectionChangedEventArgs e)
     {
         if (loadingFilters) return;
         ApplyProductFilters();
-        LoadProductsUntilVisible();
+        _ = LoadProductsUntilVisibleAsync(productSearchGeneration);
     }
     private void ApplyProductFilters()
     {
@@ -630,13 +645,17 @@ public partial class MainWindow : MetroWindow
         return matchesSituation && (family is null
             || string.Equals(row.FamilyLabel, family, StringComparison.CurrentCultureIgnoreCase));
     }
-    private void LoadNextProductsPage()
+    private async Task LoadNextProductsPageAsync(int generation)
     {
-        if (loadingProductsPage || !hasMoreProducts) return;
+        if (generation != productSearchGeneration || loadingProductsPage || !hasMoreProducts) return;
         loadingProductsPage = true;
         try
         {
-            var items = store.SearchPage(productSearchText, productSearchSource, productSearchOffset, ProductPageSize);
+            var offset = productSearchOffset;
+            var searchText = productSearchText;
+            var searchSource = productSearchSource;
+            var items = await Task.Run(() => store.SearchPage(searchText, searchSource, offset, ProductPageSize));
+            if (generation != productSearchGeneration) return;
             productSearchOffset += items.Count;
             hasMoreProducts = items.Count == ProductPageSize;
             var rows = items.Select(x => new ProductRow(x)).ToList();
@@ -649,18 +668,33 @@ public partial class MainWindow : MetroWindow
             UpdateSelectionInfo();
             UpdateProductStatus();
         }
-        finally { loadingProductsPage = false; }
+        catch (Exception ex)
+        {
+            if (generation == productSearchGeneration)
+            {
+                App.Log(ex);
+                hasMoreProducts = false;
+                Status.Text = $"Falha ao carregar produtos: {ex.Message}";
+            }
+        }
+        finally
+        {
+            loadingProductsPage = false;
+            if (generation != productSearchGeneration)
+                _ = LoadProductsUntilVisibleAsync(productSearchGeneration);
+        }
     }
-    private void LoadProductsUntilVisible()
+    private async Task LoadProductsUntilVisibleAsync(int generation)
     {
-        while (products.Count == 0 && hasMoreProducts)
-            LoadNextProductsPage();
+        if (loadingProductsPage) return;
+        while (generation == productSearchGeneration && products.Count == 0 && hasMoreProducts)
+            await LoadNextProductsPageAsync(generation);
     }
     private void ProductsScrollChanged(object sender, ScrollChangedEventArgs e)
     {
         if (e.OriginalSource is ScrollViewer scroll
             && scroll.VerticalOffset + scroll.ViewportHeight >= scroll.ExtentHeight - 80)
-            LoadNextProductsPage();
+            _ = LoadNextProductsPageAsync(productSearchGeneration);
     }
     private void UpdateProductStatus()
     {
