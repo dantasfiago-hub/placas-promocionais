@@ -107,7 +107,7 @@ O teste opcional espera os nomes originais dos arquivos de 15/10/2026. Em CI, ap
 
 ## GitHub
 
-O workflow `.github/workflows/build.yml` compila no Windows, executa testes e disponibiliza o executável como artefato `PlacasPromocionais-windows-x64`.
+O workflow `.github/workflows/build.yml` compila no Windows, executa testes e disponibiliza o executável como artefato `PlacasPromocionais-windows-x64`. A publicação é self-contained em um único executável: não exige instalação do .NET e inclui apenas os recursos de idioma pt-BR.
 
 Para criar um repositório privado na sua conta com GitHub CLI:
 
