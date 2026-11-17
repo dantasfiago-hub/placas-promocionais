@@ -24,6 +24,7 @@ public interface IStore
     bool Import(ImportBatch batch);
     void SaveItem(PriceItem item);
     void SaveFamily(FamilyInfo family);
+    void SaveGroupDescription(string groupCode, string description);
 
     string? FindImage(string hash);
     string AddImage(string name, string hash, byte[] data, byte[] thumbnail);
@@ -122,6 +123,48 @@ public static class FamilyPlates
             GroupDescription = isGroup ? description : first.GroupDescription,
             ImageId = null, 
             FamilyImageId = isGroup ? null : items.Select(x => x.FamilyImageId).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))
+        };
+    }
+}
+
+public static class GroupPlates
+{
+    public static PriceItem Build(IReadOnlyList<PriceItem> items)
+    {
+        if (items.Count == 0) throw new InvalidOperationException("Nenhum produto informado.");
+        var first = items[0];
+        if (first.Source != SourceKind.Promotion || string.IsNullOrWhiteSpace(first.GroupCode))
+            throw new InvalidOperationException("O produto não pertence a um grupo de promoção.");
+
+        var key = FamilyCode.Key(first.GroupCode);
+        if (items.Any(x => x.Source != SourceKind.Promotion || string.IsNullOrWhiteSpace(x.GroupCode)
+            || FamilyCode.Key(x.GroupCode) != key))
+            throw new InvalidOperationException("Os produtos informados pertencem a grupos diferentes.");
+
+        var description = items.Select(x => x.GroupDescription).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
+        if (description is null)
+            throw new InvalidOperationException($"O grupo {first.GroupCode} não tem descrição.");
+
+        var conditions = items.Select(x => (x.Price, x.NormalPrice, x.Start, x.End, x.Quantity, x.Rule)).Distinct().Count();
+        if (conditions > 1)
+            throw new InvalidOperationException(
+                $"Os produtos marcados do grupo '{description}' têm preço, validade ou quantidade diferentes. " +
+                "Marque apenas os que compartilham a mesma condição.");
+
+        description = description.Trim();
+        return first with
+        {
+            Id = $"group:{key}:{first.Source}:{first.Start:yyyyMMdd}:{first.End:yyyyMMdd}",
+            Code = "grupo:" + key,
+            DisplayCode = "Grupo " + key,
+            Description = description,
+            SubDescription = null,
+            Family = null,
+            FamilyDescription = description,
+            GroupCode = key,
+            GroupDescription = description,
+            ImageId = null,
+            FamilyImageId = null
         };
     }
 }

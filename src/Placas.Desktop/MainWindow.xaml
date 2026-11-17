@@ -117,6 +117,7 @@
                     </StackPanel>
                   </Button>
                   <Button x:Name="AddFamiliesButton" Style="{StaticResource SecondaryButton}" Click="AddFamiliesToBatchClick" ToolTip="Gera uma placa por família ou grupo de promoção">Placas por família</Button>
+                  <Button x:Name="AddGroupsButton" Style="{StaticResource SecondaryButton}" Click="AddGroupsToBatchClick" ToolTip="Gera uma placa por grupo das promoções selecionadas">Placas por grupo</Button>
                   <Button x:Name="ConfirmRuleButton" Style="{StaticResource SecondaryButton}" Content="Confirmar regra" Click="ConfirmRuleClick" ToolTip="Define se o valor da promoção é total do conjunto ou por unidade"/>
                 </WrapPanel>
               </DockPanel>
@@ -544,6 +545,7 @@
             <Border Background="{DynamicResource AccentSoftBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="{StaticResource CardRadius}" Padding="2" Margin="0,0,0,4">
               <DockPanel>
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                  <Button Padding="8,4" Content="Editar descrição" Click="EditBatchDescriptionClick" ToolTip="Altera a descrição do produto, da família ou do grupo selecionado"/>
                   <Button Style="{StaticResource DangerButton}" Padding="8,4" Content="Remover destacados" Click="RemoveBatchItemClick" ToolTip="Remove as linhas destacadas do lote. Atalho: Delete"/>
                   <Button Padding="8,4" Content="Limpar lote" Click="ClearBatchClick"/>
                 </StackPanel>

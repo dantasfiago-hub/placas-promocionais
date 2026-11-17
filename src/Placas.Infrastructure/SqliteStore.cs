@@ -288,6 +288,44 @@ public sealed class SqliteStore : IStore
         tx.Commit();
     }
 
+    public void SaveGroupDescription(string groupCode, string description)
+    {
+        if (string.IsNullOrWhiteSpace(groupCode) || string.IsNullOrWhiteSpace(description))
+            throw new InvalidOperationException("Informe o código e a descrição do grupo.");
+        var groupKey = FamilyCode.Key(groupCode);
+        using var db = Open(); using var tx = db.BeginTransaction();
+        using var read = db.CreateCommand(); read.Transaction = tx;
+        read.CommandText = "SELECT id,json FROM items WHERE source=$source";
+        read.Parameters.AddWithValue("$source", (int)SourceKind.Promotion);
+        var matching = new List<(string Id, PriceItem Item)>();
+        using (var reader = read.ExecuteReader())
+            while (reader.Read())
+            {
+                var item = JsonSerializer.Deserialize<PriceItem>(reader.GetString(1))!;
+                if (!string.IsNullOrWhiteSpace(item.GroupCode) && FamilyCode.Key(item.GroupCode) == groupKey)
+                    matching.Add((reader.GetString(0), item));
+            }
+
+        using var write = db.CreateCommand(); write.Transaction = tx;
+        write.CommandText = "UPDATE items SET json=$json WHERE id=$id";
+        var id = write.Parameters.Add("$id", SqliteType.Text);
+        var json = write.Parameters.Add("$json", SqliteType.Text);
+        write.Prepare();
+        foreach (var (itemId, item) in matching)
+        {
+            id.Value = itemId;
+            json.Value = JsonSerializer.Serialize(item with
+            {
+                GroupDescription = description.Trim(),
+                FamilyDescription = null,
+                ImageId = null,
+                FamilyImageId = null
+            });
+            write.ExecuteNonQuery();
+        }
+        tx.Commit();
+    }
+
     private static void UpdateGroupDescription(SqliteConnection db, SqliteTransaction tx, string id, string description)
     {
         using var read = db.CreateCommand(); read.Transaction = tx;

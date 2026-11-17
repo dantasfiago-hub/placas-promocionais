@@ -465,6 +465,46 @@ public class CoreTests
         Assert.Null(FamilyPlates.Key(Item()));
     }
 
+    [Fact] public void GroupPlateUsesPromotionGroupEvenWhenProductHasFamily()
+    {
+        var a = Item() with { Id = "a", Code = "1", Source = SourceKind.Promotion, GroupCode = "024803",
+            GroupDescription = "SORVETES", Family = "12", FamilyDescription = "CONGELADOS", Quantity = 2 };
+        var b = a with { Id = "b", Code = "2", Description = "Outro produto" };
+
+        var plate = GroupPlates.Build([a, b]);
+
+        Assert.Equal("grupo:24803", plate.Code);
+        Assert.Equal("Grupo 24803", plate.DisplayCode);
+        Assert.Equal("SORVETES", plate.Description);
+        Assert.Null(plate.Family);
+        Assert.Equal("SORVETES", plate.FamilyDescription);
+        Assert.Throws<InvalidOperationException>(() => GroupPlates.Build([a, b with { GroupCode = "99" }]));
+        Assert.Throws<InvalidOperationException>(() => GroupPlates.Build([a, b with { Price = 9.99m }]));
+        Assert.Throws<InvalidOperationException>(() => GroupPlates.Build([a with { GroupDescription = null }]));
+    }
+
+    [Fact] public void SaveGroupDescriptionUpdatesEveryPromotionInThatGroup()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var store = new SqliteStore(Path.Combine(dir, "test.db"));
+            var first = Item() with { Id = "p1", Code = "1", Source = SourceKind.Promotion,
+                GroupCode = "012", GroupDescription = "ANTES", Quantity = 2 };
+            var second = first with { Id = "p2", Code = "2", GroupCode = "12" };
+            var other = first with { Id = "p3", Code = "3", GroupCode = "99", GroupDescription = "OUTRO" };
+            store.Import(new ImportBatch("groups", "promo.xlsx", [first, second, other], []));
+
+            store.SaveGroupDescription("00012", "DEPOIS");
+
+            Assert.All(store.Search("", SourceKind.Promotion).Where(x => x.GroupCode != "99"),
+                x => Assert.Equal("DEPOIS", x.GroupDescription));
+            Assert.Equal("OUTRO", store.Search("", SourceKind.Promotion).Single(x => x.GroupCode == "99").GroupDescription);
+        }
+        finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(dir, true); }
+    }
+
     [Fact] public void ReimportingSameFileFillsMissingGroupDescription()
     {
         var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));

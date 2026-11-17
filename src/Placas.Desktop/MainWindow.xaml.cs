@@ -725,7 +725,7 @@ public partial class MainWindow : MetroWindow
     private void ProductsSelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateSelectionInfo();
     private void UpdateSelectionInfo()
     {
-        if (ProductsGrid is null || SelectionInfo is null || AddFamiliesButton is null) return;
+        if (ProductsGrid is null || SelectionInfo is null || AddFamiliesButton is null || AddGroupsButton is null) return;
         var marked = products.Count(x => x.Selected);
         var highlighted = ProductsGrid.SelectedItems.Count;
         var count = marked > 0 ? marked : highlighted;
@@ -738,6 +738,7 @@ public partial class MainWindow : MetroWindow
         DeleteProductButton.IsEnabled = count > 0;
         AddToBatchButton.IsEnabled = count > 0;
         AddFamiliesButton.IsEnabled = count > 0;
+        AddGroupsButton.IsEnabled = Targets().Any(x => x.Item.Source == SourceKind.Promotion && !string.IsNullOrWhiteSpace(x.Item.GroupCode));
         ConfirmRuleButton.IsEnabled = Targets().Any(x => x.Item.Source == SourceKind.Promotion);
     }
     private void ProductsGridKeyDown(object sender, KeyEventArgs e)
@@ -843,6 +844,43 @@ public partial class MainWindow : MetroWindow
         if (skipped.Count > 0)
             ShowSkipped(plates.Count > 0 ? "Alguns itens ficaram de fora" : "Nenhuma placa de família foi criada",
                 plates.Count > 0 ? "As placas possíveis foram adicionadas. Estes itens continuam marcados:" : "Estes itens não puderam virar placa de família:", skipped);
+    });
+
+    private void AddGroupsToBatchClick(object sender, RoutedEventArgs e) => Run(() =>
+    {
+        var copies = ReadCopies();
+        var chosen = Targets();
+        if (chosen.Count == 0) throw new InvalidOperationException("Marque ou destaque ao menos um produto de promoção.");
+        var keyed = chosen.Select(x => (Row: x,
+            Key: x.Item.Source == SourceKind.Promotion && !string.IsNullOrWhiteSpace(x.Item.GroupCode)
+                ? FamilyCode.Key(x.Item.GroupCode) : null)).ToList();
+        var skipped = keyed.Where(x => x.Key is null)
+            .Select(x => $"{x.Row.Item.DisplayCode} — {x.Row.Item.Description}: não pertence a um grupo de promoção").ToList();
+        var plates = new List<PriceItem>();
+        var used = new List<ProductRow>();
+        foreach (var group in keyed.Where(x => x.Key is not null).GroupBy(x => x.Key!))
+        {
+            var rows = group.Select(x => x.Row).ToList();
+            try
+            {
+                var plate = GroupPlates.Build(rows.Select(x => x.Item).ToList());
+                if (basket.Any(b => b.Item.Code == plate.Code && b.Item.Id != plate.Id))
+                 throw new InvalidOperationException("já há outra condição deste grupo no lote.");
+                plates.Add(plate);
+                used.AddRange(rows);
+            }
+            catch (InvalidOperationException ex)
+            {
+                skipped.Add($"Grupo {rows[0].Item.GroupCode} - {rows[0].Item.GroupDescription}: {ex.Message}");
+            }
+        }
+        foreach (var plate in plates) UpsertBatch(plate, copies);
+        SetMarked(used, false);
+        BatchGrid.Items.Refresh(); InvalidatePreview();
+        Status.Text = $"{plates.Count} placa(s) de grupo adicionada(s); {basket.Count} no lote. Escolha o layout na aba Lote e impressão.";
+        if (skipped.Count > 0)
+            ShowSkipped(plates.Count > 0 ? "Alguns grupos ficaram de fora" : "Nenhuma placa de grupo foi criada",
+                plates.Count > 0 ? "As placas possíveis foram adicionadas. Estes itens continuam marcados:" : "Estes itens não puderam virar placa de grupo:", skipped);
     });
 
     private void ConfirmRuleClick(object sender, RoutedEventArgs e) => Run(() =>
@@ -1402,6 +1440,120 @@ public partial class MainWindow : MetroWindow
         InvalidatePreview();
         Status.Text = $"{rows.Count} item(ns) removido(s) do lote; restam {basket.Count}.";
     }
+    private void EditBatchDescriptionClick(object sender, RoutedEventArgs e) => Run(() =>
+    {
+        var rows = BatchGrid.SelectedItems.OfType<BatchRow>().ToList();
+        if (rows.Count != 1)
+            throw new InvalidOperationException("Selecione somente um item do lote para editar a descrição.");
+
+        var row = rows[0];
+        var original = row.Item;
+        var window = new Window
+        {
+            Owner = this, Title = "Editar descrições",
+            Width = 480, Height = 390, MinWidth = 420, MinHeight = 300,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner
+        };
+        var panel = new StackPanel { Margin = new Thickness(14) };
+        var isFamilyPlate = original.Id.StartsWith("family:", StringComparison.Ordinal);
+        var isGroupPlate = original.Id.StartsWith("group:", StringComparison.Ordinal)
+            && original.Code.StartsWith("grupo:", StringComparison.Ordinal);
+        panel.Children.Add(new TextBlock { Text = "Descrição do produto / placa", Margin = new Thickness(0, 5, 0, 2) });
+        var productDescription = new TextBox { Text = original.Description };
+        panel.Children.Add(productDescription);
+        panel.Children.Add(new TextBlock { Text = "Descrição da família", Margin = new Thickness(0, 10, 0, 2) });
+        var familyDescription = new TextBox
+        {
+            Text = original.FamilyDescription ?? "",
+            IsEnabled = !string.IsNullOrWhiteSpace(original.Family),
+            ToolTip = string.IsNullOrWhiteSpace(original.Family) ? "Este item não pertence a uma família cadastrada." : null
+        };
+        panel.Children.Add(familyDescription);
+        panel.Children.Add(new TextBlock { Text = "Descrição do grupo", Margin = new Thickness(0, 10, 0, 2) });
+        var groupDescription = new TextBox
+        {
+            Text = original.GroupDescription ?? "",
+            IsEnabled = original.Source == SourceKind.Promotion && !string.IsNullOrWhiteSpace(original.GroupCode),
+            ToolTip = string.IsNullOrWhiteSpace(original.GroupCode) ? "Este item não pertence a um grupo de promoção." : null
+        };
+        panel.Children.Add(groupDescription);
+        panel.Children.Add(new TextBlock
+        {
+            Text = "A descrição do produto é salva no cadastro. As descrições da família e do grupo são compartilhadas com os itens correspondentes.",
+            TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 10),
+            Foreground = (Brush)System.Windows.Application.Current.Resources["TextSecondaryBrush"]
+        });
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+        var save = new Button { Content = "Salvar" };
+        var cancel = new Button { Content = "Cancelar", Margin = new Thickness(6, 0, 0, 0) };
+        cancel.Click += (_, _) => window.DialogResult = false;
+        save.Click += (_, _) => Run(() =>
+        {
+            var description = productDescription.Text.Trim();
+            if (description.Length == 0) throw new InvalidOperationException("A descrição do produto não pode ficar vazia.");
+
+            var revisedFamilyDescription = familyDescription.Text.Trim();
+            var updateFamily = familyDescription.IsEnabled
+                && revisedFamilyDescription.Length > 0
+                && revisedFamilyDescription != original.FamilyDescription;
+            if (updateFamily)
+                store.SaveFamily(new FamilyInfo(original.Family!, revisedFamilyDescription));
+
+            var revisedGroupDescription = groupDescription.Text.Trim();
+            if (groupDescription.IsEnabled && revisedGroupDescription.Length == 0)
+                throw new InvalidOperationException("A descrição do grupo não pode ficar vazia.");
+            var updateGroup = groupDescription.IsEnabled
+                && revisedGroupDescription != original.GroupDescription;
+            if (updateGroup)
+                store.SaveGroupDescription(original.GroupCode!, revisedGroupDescription);
+
+            if (!isFamilyPlate && !isGroupPlate)
+                store.SaveItem(original with
+                {
+                    Description = description,
+                    GroupDescription = updateGroup ? revisedGroupDescription : original.GroupDescription
+                });
+
+            var familyKey = updateFamily ? FamilyCode.Key(original.Family!) : null;
+            var groupKey = updateGroup ? FamilyCode.Key(original.GroupCode!) : null;
+            foreach (var batchRow in basket)
+            {
+                var item = batchRow.Item;
+                var sameFamily = familyKey is not null && !string.IsNullOrWhiteSpace(item.Family)
+                    && FamilyCode.Key(item.Family) == familyKey;
+                var sameGroup = groupKey is not null && item.Source == SourceKind.Promotion
+                    && !string.IsNullOrWhiteSpace(item.GroupCode) && FamilyCode.Key(item.GroupCode) == groupKey;
+                if (item.Id == original.Id)
+                    item = item with { Description = description };
+                if (sameFamily)
+                {
+                    if (item.Id.StartsWith("family:", StringComparison.Ordinal)
+                        && item.Description == item.FamilyDescription)
+                        item = item with { Description = revisedFamilyDescription };
+                    item = item with { FamilyDescription = revisedFamilyDescription };
+                }
+                if (sameGroup)
+                {
+                    if (item.Id.StartsWith("group:", StringComparison.Ordinal) && item.Code.StartsWith("grupo:", StringComparison.Ordinal))
+                        item = item with { Description = revisedGroupDescription, FamilyDescription = revisedGroupDescription };
+                    item = item with { GroupDescription = revisedGroupDescription };
+                }
+                if (item.Id == original.Id || sameFamily || sameGroup)
+                    batchRow.Item = item;
+            }
+
+            BatchGrid.Items.Refresh();
+            InvalidatePreview();
+            RefreshProducts();
+            Status.Text = "Descrições atualizadas no lote e no cadastro, quando aplicável.";
+            window.DialogResult = true;
+        });
+        buttons.Children.Add(save);
+        buttons.Children.Add(cancel);
+        panel.Children.Add(buttons);
+        window.Content = new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        window.ShowDialog();
+    });
     private void ClearBatchClick(object sender, RoutedEventArgs e)
     {
         if (basket.Count == 0) return;
