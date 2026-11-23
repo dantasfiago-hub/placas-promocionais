@@ -343,6 +343,7 @@ public partial class MainWindow : MetroWindow
         resources["AccentBrush"] = CreateBrush(darkTheme ? "#458C91" : "#347E83");
         resources["AccentHoverBrush"] = CreateBrush(darkTheme ? "#76B5B6" : "#286B70");
         resources["AccentSoftBrush"] = CreateBrush(darkTheme ? "#293B40" : "#EBF4F4");
+        resources["SelectionBrush"] = CreateBrush(darkTheme ? "#30465A" : "#D6E8F7");
         resources["FocusRingBrush"] = CreateBrush(darkTheme ? "#80458C91" : "#80347E83");
         resources["DangerSoftBrush"] = CreateBrush(darkTheme ? "#402A2A" : "#FFF3F2");
         resources["DangerBorderBrush"] = CreateBrush(darkTheme ? "#72423F" : "#E8B8B4");

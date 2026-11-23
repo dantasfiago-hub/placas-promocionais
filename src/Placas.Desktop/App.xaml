@@ -16,6 +16,7 @@
       <SolidColorBrush x:Key="AccentBrush" Color="#347E83"/>
       <SolidColorBrush x:Key="AccentHoverBrush" Color="#286B70"/>
       <SolidColorBrush x:Key="AccentSoftBrush" Color="#EBF4F4"/>
+      <SolidColorBrush x:Key="SelectionBrush" Color="#D6E8F7"/>
       <SolidColorBrush x:Key="FocusRingBrush" Color="#80347E83"/>
       <SolidColorBrush x:Key="DangerSoftBrush" Color="#FFF3F2"/>
       <SolidColorBrush x:Key="DangerBorderBrush" Color="#E8B8B4"/>
@@ -161,7 +162,15 @@
             <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}"/>
           </Trigger>
           <Trigger Property="IsSelected" Value="True">
-            <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource SelectionBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+          </Trigger>
+        </Style.Triggers>
+      </Style>
+      <Style TargetType="{x:Type DataGridCell}" BasedOn="{StaticResource MahApps.Styles.DataGridCell}">
+        <Style.Triggers>
+          <Trigger Property="IsSelected" Value="True">
+            <Setter Property="Background" Value="{DynamicResource SelectionBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
           </Trigger>
         </Style.Triggers>

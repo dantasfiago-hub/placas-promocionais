@@ -146,6 +146,7 @@
                   <DataTrigger Binding="{Binding Origin}" Value="Oferta"><Setter Property="Foreground" Value="#0B5CAD"/><Setter Property="FontWeight" Value="SemiBold"/></DataTrigger>
                   <DataTrigger Binding="{Binding Origin}" Value="Promoção"><Setter Property="Foreground" Value="#7A3FB0"/><Setter Property="FontWeight" Value="SemiBold"/></DataTrigger>
                   <DataTrigger Binding="{Binding Origin}" Value="Catálogo"><Setter Property="Foreground" Value="#526172"/></DataTrigger>
+                  <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=DataGridRow}}" Value="True"><Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/></DataTrigger>
                 </Style.Triggers>
               </Style>
               <Style x:Key="SituationText" TargetType="TextBlock" BasedOn="{StaticResource CellText}">
@@ -155,6 +156,7 @@
                   <DataTrigger Binding="{Binding Level}" Value="zero"><Setter Property="Foreground" Value="#B54708"/></DataTrigger>
                   <DataTrigger Binding="{Binding Level}" Value="future"><Setter Property="Foreground" Value="#175CD3"/></DataTrigger>
                   <DataTrigger Binding="{Binding Level}" Value="ok"><Setter Property="Foreground" Value="#067647"/></DataTrigger>
+                  <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=DataGridRow}}" Value="True"><Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/></DataTrigger>
                 </Style.Triggers>
               </Style>
             </DataGrid.Resources>
@@ -163,10 +165,10 @@
                 <Setter Property="ToolTip" Value="{Binding Details}"/>
                 <Style.Triggers>
                     <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="{DynamicResource AccentSoftBrush}"/></Trigger>
-                    <Trigger Property="IsSelected" Value="True"><Setter Property="Background" Value="{DynamicResource AccentSoftBrush}"/></Trigger>
                     <DataTrigger Binding="{Binding Level}" Value="expired"><Setter Property="Background" Value="#FBE9E9"/></DataTrigger>
-                  <DataTrigger Binding="{Binding Level}" Value="attention"><Setter Property="Background" Value="#FFF4D6"/></DataTrigger>
-                  <DataTrigger Binding="{Binding Level}" Value="future"><Setter Property="Background" Value="#EAF3FF"/></DataTrigger>
+                    <DataTrigger Binding="{Binding Level}" Value="attention"><Setter Property="Background" Value="#FFF4D6"/></DataTrigger>
+                    <DataTrigger Binding="{Binding Level}" Value="future"><Setter Property="Background" Value="#EAF3FF"/></DataTrigger>
+                    <Trigger Property="IsSelected" Value="True"><Setter Property="Background" Value="{DynamicResource SelectionBrush}"/><Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/></Trigger>
                 </Style.Triggers>
               </Style>
             </DataGrid.RowStyle>
