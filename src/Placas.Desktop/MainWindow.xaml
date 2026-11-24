@@ -574,7 +574,7 @@
           <Grid>
             <Grid.ColumnDefinitions><ColumnDefinition Width="2*"/><ColumnDefinition Width="3*"/></Grid.ColumnDefinitions>
             <Grid Margin="0,0,8,0">
-              <DataGrid x:Name="BatchGrid" SelectionMode="Extended" PreviewKeyDown="BatchGridKeyDown" RowStyle="{StaticResource GridRowStyle}">
+              <DataGrid x:Name="BatchGrid" SelectionMode="Extended" MouseDoubleClick="BatchGridMouseDoubleClick" PreviewKeyDown="BatchGridKeyDown" RowStyle="{StaticResource GridRowStyle}">
                 <DataGrid.Columns>
                   <DataGridTextColumn Header="Produto" Binding="{Binding Item.Description}" Width="*" IsReadOnly="True"/>
                   <DataGridTextColumn Header="Cópias" Binding="{Binding Copies}" Width="85" MinWidth="85" ElementStyle="{StaticResource NumericCellText}"/>

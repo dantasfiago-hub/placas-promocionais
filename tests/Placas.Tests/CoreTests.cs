@@ -70,7 +70,10 @@ public class CoreTests
             store.SaveItem(product with { Description = "Outro nome", Quantity = 2 });
             Assert.Equal(2, Assert.Single(store.Search("Outro nome", null)).Quantity);
             store.DeleteItem(product.Id);
-            Assert.Empty(store.Search("", null));
+            var retained = Assert.Single(store.Search("", null));
+            Assert.Equal(SourceKind.Catalog, retained.Source);
+            Assert.Equal("Outro nome", retained.Description);
+            Assert.Equal("MERCEARIA", retained.Family);
         }
         finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(dir, true); }
     }
@@ -312,6 +315,114 @@ public class CoreTests
             var saved = Assert.Single(store.Search("", null));
             Assert.Equal(6.99m, saved.Price);
             Assert.Equal("Pacote 5kg", saved.SubDescription);
+        }
+        finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(dir, true); }
+    }
+
+    [Fact] public void ManualProductFamilyGroupAndSubDescriptionOverridesSurviveReimport()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var store = new SqliteStore(Path.Combine(dir, "test.db"));
+            var original = Item() with
+            {
+                Id = "offer:old", Source = SourceKind.Promotion, Family = "12", GroupCode = "99",
+                Description = "Descrição importada", SubDescription = "Subdescrição importada",
+                GroupDescription = "Grupo importado", Quantity = 2
+            };
+            store.Import(new ImportBatch("first", "primeira.xlsx", [original], [],
+                [new FamilyInfo("12", "Família importada")]));
+
+            var edited = original with
+            {
+                Description = "Descrição manual", Family = "13", SubDescription = "Subdescrição manual"
+            };
+            store.SaveItem(edited);
+            store.SaveFamily(new FamilyInfo("13", "Família manual"));
+            store.SaveGroupDescription("99", "Grupo manual");
+
+            var reimported = original with
+            {
+                Id = "offer:new", Description = "Descrição nova da planilha",
+                Family = "88", SubDescription = null, GroupDescription = "Grupo novo da planilha"
+            };
+            store.Import(new ImportBatch("second", "segunda.xlsx", [reimported], [],
+                [new FamilyInfo("88", "Família nova da planilha"), new FamilyInfo("13", "Família alterada pela planilha")]));
+
+            var saved = Assert.Single(store.Search("", SourceKind.Promotion), x => x.Id == "offer:new");
+            Assert.Equal("Descrição manual", saved.Description);
+            Assert.Equal("13", saved.Family);
+            Assert.Equal("Família manual", saved.FamilyDescription);
+            Assert.Equal("Subdescrição manual", saved.SubDescription);
+            Assert.Equal("Grupo manual", saved.GroupDescription);
+        }
+        finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(dir, true); }
+    }
+
+    [Fact] public void DeletingLastOfferRetainsProductAndReimportReusesManualDetails()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var store = new SqliteStore(Path.Combine(dir, "test.db"));
+            var offer = Item() with
+            {
+                Id = "offer:old", Description = "Produto importado", Family = "12",
+                SubDescription = "Subdescrição original"
+            };
+            store.Import(new ImportBatch("offer", "oferta.xlsx", [offer], [],
+                [new FamilyInfo("12", "Bebidas")]));
+            store.SaveItem(offer with
+            {
+                Description = "Produto editado",
+                Family = "12",
+                SubDescription = "Subdescrição editada"
+            });
+
+            Assert.Equal(1, store.DeleteItems([offer.Id]));
+            var retained = Assert.Single(store.Search("", null));
+            Assert.Equal("product:1", retained.Id);
+            Assert.Equal(SourceKind.Catalog, retained.Source);
+            Assert.Equal(0m, retained.Price);
+            Assert.Equal("Produto editado", retained.Description);
+            Assert.Equal("Bebidas", retained.FamilyDescription);
+            Assert.Equal("Subdescrição editada", retained.SubDescription);
+
+            store.Import(new ImportBatch("offer-again", "oferta-atualizada.xlsx",
+                [offer with { Id = "offer:new", Description = "Descrição da nova oferta", SubDescription = null }], []));
+            var restoredOffer = Assert.Single(store.Search("", SourceKind.Offer));
+            Assert.Equal("Produto editado", restoredOffer.Description);
+            Assert.Equal("Subdescrição editada", restoredOffer.SubDescription);
+            Assert.Empty(store.Search("", SourceKind.Catalog));
+        }
+        finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(dir, true); }
+    }
+
+    [Fact] public void DeletingImportedOrExpiredConditionsRetainsCatalogProduct()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var importedStore = new SqliteStore(Path.Combine(dir, "imports.db"));
+            var imported = Item() with { Id = "offer:import", Description = "Produto da oferta" };
+            importedStore.Import(new ImportBatch("import-hash", "oferta.xlsx", [imported], []));
+            Assert.Equal(1, importedStore.DeleteImport("import-hash"));
+            var importedProduct = Assert.Single(importedStore.Search("", null));
+            Assert.Equal(SourceKind.Catalog, importedProduct.Source);
+            Assert.Equal("Produto da oferta", importedProduct.Description);
+
+            var expiredStore = new SqliteStore(Path.Combine(dir, "expired.db"));
+            var expired = Item() with { Id = "promotion:expired", Source = SourceKind.Promotion,
+                End = new DateOnly(2026, 1, 1), Quantity = 2 };
+            expiredStore.Import(new ImportBatch("expired-hash", "promocao.xlsx", [expired], []));
+            Assert.Equal(1, expiredStore.DeleteExpired(new DateOnly(2026, 10, 20)));
+            var expiredProduct = Assert.Single(expiredStore.Search("", null));
+            Assert.Equal(SourceKind.Catalog, expiredProduct.Source);
+            Assert.Equal("Produto teste", expiredProduct.Description);
         }
         finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(dir, true); }
     }
@@ -654,6 +765,7 @@ public class CoreTests
             Assert.Equal(0, store.DeleteItems(["inexistente"]));
             Assert.Equal(1, store.DeleteItems(["c"]));
             Assert.Empty(store.ListImports()); // importação esvaziada some da lista
+            Assert.Equal("product:1", Assert.Single(store.Search("", null)).Id);
             Assert.Equal(0, store.DeleteItems([]));
         }
         finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(dir, true); }

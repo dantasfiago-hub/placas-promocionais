@@ -9,6 +9,10 @@ namespace Placas.Infrastructure;
 
 public sealed class SqliteStore : IStore
 {
+    private sealed record ProductDetails(
+        string Code, string DisplayCode, string Description, string? SubDescription, string? Family,
+        bool ManualDescription, bool ManualSubDescription, bool ManualFamily);
+
     private readonly string connectionString;
     public SqliteStore(string path)
     {
@@ -23,20 +27,72 @@ public sealed class SqliteStore : IStore
             CREATE TABLE IF NOT EXISTS items(id TEXT PRIMARY KEY, code TEXT NOT NULL, search TEXT NOT NULL, source INTEGER NOT NULL, json TEXT NOT NULL);
             CREATE INDEX IF NOT EXISTS ix_items_code ON items(code);
             CREATE INDEX IF NOT EXISTS ix_items_source ON items(source);
-            CREATE TABLE IF NOT EXISTS families(key TEXT PRIMARY KEY, code TEXT NOT NULL, description TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS families(key TEXT PRIMARY KEY, code TEXT NOT NULL, description TEXT NOT NULL, manual INTEGER NOT NULL DEFAULT 0);
+            CREATE TABLE IF NOT EXISTS group_descriptions(key TEXT PRIMARY KEY, code TEXT NOT NULL, description TEXT NOT NULL, manual INTEGER NOT NULL DEFAULT 0);
+            CREATE TABLE IF NOT EXISTS product_details(
+                code TEXT PRIMARY KEY, display_code TEXT NOT NULL, description TEXT NOT NULL, sub_description TEXT, family TEXT,
+                manual_description INTEGER NOT NULL DEFAULT 0, manual_sub_description INTEGER NOT NULL DEFAULT 0, manual_family INTEGER NOT NULL DEFAULT 0
+            );
             CREATE TABLE IF NOT EXISTS images(id TEXT PRIMARY KEY, name TEXT NOT NULL, hash TEXT NOT NULL UNIQUE, data BLOB NOT NULL, thumb BLOB NOT NULL, created TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS product_images(code TEXT PRIMARY KEY, image_id TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS family_images(key TEXT PRIMARY KEY, image_id TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS templates(id TEXT PRIMARY KEY, json TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS history(id TEXT PRIMARY KEY, created TEXT NOT NULL, status TEXT NOT NULL, detail TEXT NOT NULL, json TEXT NOT NULL);
-            PRAGMA user_version=1;
+            PRAGMA user_version=2;
             """;
         command.ExecuteNonQuery();
+        if (!HasColumn(db, "families", "manual"))
+        {
+            using var alter = db.CreateCommand();
+            alter.CommandText = "ALTER TABLE families ADD COLUMN manual INTEGER NOT NULL DEFAULT 0";
+            alter.ExecuteNonQuery();
+        }
+        InitializeProductDetails(db);
         if (Templates().Count == 0) SaveTemplate(PlateTemplate.Default());
     }
     private SqliteConnection Open()
     {
         var connection = new SqliteConnection(connectionString); connection.Open(); return connection;
+    }
+    private static bool HasColumn(SqliteConnection db, string table, string column)
+    {
+        using var command = db.CreateCommand();
+        command.CommandText = $"PRAGMA table_info({table})";
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+            if (string.Equals(reader.GetString(1), column, StringComparison.OrdinalIgnoreCase))
+                return true;
+        return false;
+    }
+
+    private static void InitializeProductDetails(SqliteConnection db)
+    {
+        using var tx = db.BeginTransaction();
+        using var read = db.CreateCommand(); read.Transaction = tx;
+        read.CommandText = "SELECT code,json FROM items ORDER BY source,id";
+        var items = new List<(string Code, PriceItem Item)>();
+        using (var reader = read.ExecuteReader())
+            while (reader.Read())
+                items.Add((reader.GetString(0), JsonSerializer.Deserialize<PriceItem>(reader.GetString(1))!));
+
+        foreach (var (code, item) in items)
+        {
+            using var insert = db.CreateCommand(); insert.Transaction = tx;
+            insert.CommandText = """
+                INSERT OR IGNORE INTO product_details(code,display_code,description,sub_description,family)
+                VALUES($code,$display,$description,$sub,$family)
+                """;
+            insert.Parameters.AddWithValue("$code", code);
+            insert.Parameters.AddWithValue("$display", item.DisplayCode);
+            insert.Parameters.AddWithValue("$description", item.Description);
+            insert.Parameters.AddWithValue("$sub", (object?)item.SubDescription ?? DBNull.Value);
+            insert.Parameters.AddWithValue("$family", (object?)item.Family ?? DBNull.Value);
+            insert.ExecuteNonQuery();
+            if (item.Source == SourceKind.Promotion && !string.IsNullOrWhiteSpace(item.GroupCode)
+                && !string.IsNullOrWhiteSpace(item.GroupDescription))
+                UpsertGroupDescription(db, tx, item.GroupCode, item.GroupDescription, manual: false);
+        }
+        tx.Commit();
     }
     public bool Import(ImportBatch batch)
     {
@@ -50,7 +106,7 @@ public sealed class SqliteStore : IStore
         insert.Parameters.AddWithValue("$date", DateTimeOffset.Now.ToString("O"));
         if (insert.ExecuteNonQuery() == 0)
         {
-            foreach (var family in batch.Families ?? []) UpsertFamily(db, transaction, family);
+            foreach (var family in batch.Families ?? []) UpsertFamily(db, transaction, family, manual: false);
             foreach (var known in batch.Items.Where(x => !string.IsNullOrWhiteSpace(x.GroupDescription)))
                 UpdateGroupDescription(db, transaction, known.Id, known.GroupDescription!);
             transaction.Commit();
@@ -84,6 +140,9 @@ public sealed class SqliteStore : IStore
                     JsonSerializer.Deserialize<PriceItem>(existingJson)?.SubDescription is { Length: > 0 } keptSub)
                     imported = imported with { SubDescription = keptSub };
             }
+            DeleteSyntheticProduct(db, transaction, imported.Code);
+            UpsertProductDetails(db, transaction, imported, manualDescription: false, manualSubDescription: false, manualFamily: false);
+            imported = ApplyProductOverrides(db, transaction, imported);
             id.Value = imported.Id; code.Value = imported.Code; search.Value = SearchKey(imported.Description);
             source.Value = (int)imported.Source; json.Value = JsonSerializer.Serialize(imported with { FamilyDescription = null, ImageId = null, FamilyImageId = null });
             command.ExecuteNonQuery();
@@ -94,7 +153,9 @@ public sealed class SqliteStore : IStore
         var linkedId = link.Parameters.Add("$id", SqliteType.Text);
         foreach (var item in batch.Items) { linkedId.Value = item.Id; link.ExecuteNonQuery(); }
         foreach (var family in batch.Families ?? [])
-            UpsertFamily(db, transaction, family);
+            UpsertFamily(db, transaction, family, manual: false);
+        foreach (var item in batch.Items.Where(x => !string.IsNullOrWhiteSpace(x.GroupCode) && !string.IsNullOrWhiteSpace(x.GroupDescription)))
+            UpsertGroupDescription(db, transaction, item.GroupCode!, item.GroupDescription!, manual: false);
         if (batch.Items.Any(x => x.Source == SourceKind.Catalog && !string.IsNullOrWhiteSpace(x.Family)))
         {
             using var select = db.CreateCommand(); select.Transaction = transaction;
@@ -130,7 +191,17 @@ public sealed class SqliteStore : IStore
             throw new InvalidOperationException("Preço, quantidade ou período inválidos.");
         // A descrição da família vive na tabela "families"; não é gravada junto do item.
         var normalized = item with { Code = ProductCode.Normalize(item.DisplayCode), FamilyDescription = null, ImageId = null, FamilyImageId = null };
-        using var db = Open(); using var command = db.CreateCommand();
+        using var db = Open(); using var tx = db.BeginTransaction();
+        using var previousRead = db.CreateCommand(); previousRead.Transaction = tx;
+        previousRead.CommandText = "SELECT json FROM items WHERE id=$id";
+        previousRead.Parameters.AddWithValue("$id", normalized.Id);
+        var previous = previousRead.ExecuteScalar() is string previousJson
+            ? JsonSerializer.Deserialize<PriceItem>(previousJson) : null;
+        UpsertProductDetails(db, tx, normalized,
+            manualDescription: previous is null || previous.Description != normalized.Description,
+            manualSubDescription: previous is null || previous.SubDescription != normalized.SubDescription,
+            manualFamily: previous is null || previous.Family != normalized.Family);
+        using var command = db.CreateCommand(); command.Transaction = tx;
         command.CommandText = """
             INSERT INTO items(id,code,search,source,json) VALUES($id,$code,$search,$source,$json)
             ON CONFLICT(id) DO UPDATE SET code=$code, search=$search, source=$source, json=$json
@@ -141,6 +212,34 @@ public sealed class SqliteStore : IStore
         command.Parameters.AddWithValue("$source", (int)normalized.Source);
         command.Parameters.AddWithValue("$json", JsonSerializer.Serialize(normalized));
         command.ExecuteNonQuery();
+
+        using var read = db.CreateCommand(); read.Transaction = tx;
+        read.CommandText = "SELECT id,json FROM items WHERE code=$code";
+        read.Parameters.AddWithValue("$code", normalized.Code);
+        var matches = new List<(string Id, PriceItem Item)>();
+        using (var reader = read.ExecuteReader())
+            while (reader.Read())
+                matches.Add((reader.GetString(0), JsonSerializer.Deserialize<PriceItem>(reader.GetString(1))!));
+        var savedDetails = ReadProductDetails(db, tx, normalized.Code);
+        foreach (var (id, existing) in matches)
+        {
+            var updated = existing with
+            {
+                Description = savedDetails?.ManualDescription == true ? savedDetails.Description : existing.Description,
+                SubDescription = savedDetails?.ManualSubDescription == true ? savedDetails.SubDescription : existing.SubDescription,
+                Family = savedDetails?.ManualFamily == true ? savedDetails.Family : existing.Family,
+                FamilyDescription = null,
+                ImageId = null,
+                FamilyImageId = null
+            };
+            using var update = db.CreateCommand(); update.Transaction = tx;
+            update.CommandText = "UPDATE items SET search=$search,json=$json WHERE id=$id";
+            update.Parameters.AddWithValue("$id", id);
+            update.Parameters.AddWithValue("$search", SearchKey(updated.Description));
+            update.Parameters.AddWithValue("$json", JsonSerializer.Serialize(updated));
+            update.ExecuteNonQuery();
+        }
+        tx.Commit();
     }
 
     private static Dictionary<string, string> LoadProductImages(SqliteConnection db)
@@ -284,7 +383,7 @@ public sealed class SqliteStore : IStore
         if (string.IsNullOrWhiteSpace(family.Code) || string.IsNullOrWhiteSpace(family.Description))
             throw new InvalidOperationException("Informe o código e a descrição da família.");
         using var db = Open(); using var tx = db.BeginTransaction();
-        UpsertFamily(db, tx, family);
+        UpsertFamily(db, tx, family, manual: true);
         tx.Commit();
     }
 
@@ -292,37 +391,8 @@ public sealed class SqliteStore : IStore
     {
         if (string.IsNullOrWhiteSpace(groupCode) || string.IsNullOrWhiteSpace(description))
             throw new InvalidOperationException("Informe o código e a descrição do grupo.");
-        var groupKey = FamilyCode.Key(groupCode);
         using var db = Open(); using var tx = db.BeginTransaction();
-        using var read = db.CreateCommand(); read.Transaction = tx;
-        read.CommandText = "SELECT id,json FROM items WHERE source=$source";
-        read.Parameters.AddWithValue("$source", (int)SourceKind.Promotion);
-        var matching = new List<(string Id, PriceItem Item)>();
-        using (var reader = read.ExecuteReader())
-            while (reader.Read())
-            {
-                var item = JsonSerializer.Deserialize<PriceItem>(reader.GetString(1))!;
-                if (!string.IsNullOrWhiteSpace(item.GroupCode) && FamilyCode.Key(item.GroupCode) == groupKey)
-                    matching.Add((reader.GetString(0), item));
-            }
-
-        using var write = db.CreateCommand(); write.Transaction = tx;
-        write.CommandText = "UPDATE items SET json=$json WHERE id=$id";
-        var id = write.Parameters.Add("$id", SqliteType.Text);
-        var json = write.Parameters.Add("$json", SqliteType.Text);
-        write.Prepare();
-        foreach (var (itemId, item) in matching)
-        {
-            id.Value = itemId;
-            json.Value = JsonSerializer.Serialize(item with
-            {
-                GroupDescription = description.Trim(),
-                FamilyDescription = null,
-                ImageId = null,
-                FamilyImageId = null
-            });
-            write.ExecuteNonQuery();
-        }
+        UpsertGroupDescription(db, tx, groupCode, description, manual: true);
         tx.Commit();
     }
 
@@ -332,27 +402,121 @@ public sealed class SqliteStore : IStore
         read.CommandText = "SELECT json FROM items WHERE id=$id"; read.Parameters.AddWithValue("$id", id);
         if (read.ExecuteScalar() is not string json) return;
         var item = JsonSerializer.Deserialize<PriceItem>(json)!;
-        if (item.GroupDescription == description) return;
-        using var write = db.CreateCommand(); write.Transaction = tx;
-        write.CommandText = "UPDATE items SET json=$json WHERE id=$id";
-        write.Parameters.AddWithValue("$id", id);
-        write.Parameters.AddWithValue("$json", JsonSerializer.Serialize(item with { GroupDescription = description, FamilyDescription = null, ImageId = null, FamilyImageId = null }));
-        write.ExecuteNonQuery();
+        if (!string.IsNullOrWhiteSpace(item.GroupCode))
+            UpsertGroupDescription(db, tx, item.GroupCode, description, manual: false);
     }
 
-    private static void UpsertFamily(SqliteConnection db, SqliteTransaction tx, FamilyInfo family)
+    private static void UpsertFamily(SqliteConnection db, SqliteTransaction tx, FamilyInfo family, bool manual)
     {
         using var command = db.CreateCommand(); command.Transaction = tx;
-        command.CommandText = "INSERT INTO families(key,code,description) VALUES($key,$code,$description) ON CONFLICT(key) DO UPDATE SET code=$code, description=$description";
+        command.CommandText = """
+            INSERT INTO families(key,code,description,manual) VALUES($key,$code,$description,$manual)
+            ON CONFLICT(key) DO UPDATE SET
+                code=CASE WHEN families.manual=1 AND $manual=0 THEN families.code ELSE excluded.code END,
+                description=CASE WHEN families.manual=1 AND $manual=0 THEN families.description ELSE excluded.description END,
+                manual=MAX(families.manual,excluded.manual)
+            """;
         command.Parameters.AddWithValue("$key", FamilyCode.Key(family.Code));
         command.Parameters.AddWithValue("$code", family.Code.Trim());
         command.Parameters.AddWithValue("$description", family.Description.Trim());
+        command.Parameters.AddWithValue("$manual", manual ? 1 : 0);
+        command.ExecuteNonQuery();
+    }
+
+    private static void UpsertGroupDescription(SqliteConnection db, SqliteTransaction tx, string code, string description, bool manual)
+    {
+        using var command = db.CreateCommand(); command.Transaction = tx;
+        command.CommandText = """
+            INSERT INTO group_descriptions(key,code,description,manual) VALUES($key,$code,$description,$manual)
+            ON CONFLICT(key) DO UPDATE SET
+                code=CASE WHEN group_descriptions.manual=1 AND $manual=0 THEN group_descriptions.code ELSE excluded.code END,
+                description=CASE WHEN group_descriptions.manual=1 AND $manual=0 THEN group_descriptions.description ELSE excluded.description END,
+                manual=MAX(group_descriptions.manual,excluded.manual)
+            """;
+        command.Parameters.AddWithValue("$key", FamilyCode.Key(code));
+        command.Parameters.AddWithValue("$code", code.Trim());
+        command.Parameters.AddWithValue("$description", description.Trim());
+        command.Parameters.AddWithValue("$manual", manual ? 1 : 0);
+        command.ExecuteNonQuery();
+    }
+
+    private static void UpsertProductDetails(
+        SqliteConnection db, SqliteTransaction tx, PriceItem item,
+        bool manualDescription, bool manualSubDescription, bool manualFamily)
+    {
+        using var command = db.CreateCommand(); command.Transaction = tx;
+        command.CommandText = """
+            INSERT INTO product_details(code,display_code,description,sub_description,family,manual_description,manual_sub_description,manual_family)
+            VALUES($code,$display,$description,$sub,$family,$manual_description,$manual_sub_description,$manual_family)
+            ON CONFLICT(code) DO UPDATE SET
+                display_code=excluded.display_code,
+                description=CASE WHEN product_details.manual_description=1 AND $manual_description=0 THEN product_details.description ELSE excluded.description END,
+                sub_description=CASE WHEN product_details.manual_sub_description=1 AND $manual_sub_description=0 THEN product_details.sub_description ELSE excluded.sub_description END,
+                family=CASE WHEN product_details.manual_family=1 AND $manual_family=0 THEN product_details.family ELSE excluded.family END,
+                manual_description=MAX(product_details.manual_description,excluded.manual_description),
+                manual_sub_description=MAX(product_details.manual_sub_description,excluded.manual_sub_description),
+                manual_family=MAX(product_details.manual_family,excluded.manual_family)
+            """;
+        command.Parameters.AddWithValue("$code", item.Code);
+        command.Parameters.AddWithValue("$display", item.DisplayCode);
+        command.Parameters.AddWithValue("$description", item.Description);
+        command.Parameters.AddWithValue("$sub", (object?)item.SubDescription ?? DBNull.Value);
+        command.Parameters.AddWithValue("$family", (object?)item.Family ?? DBNull.Value);
+        command.Parameters.AddWithValue("$manual_description", manualDescription ? 1 : 0);
+        command.Parameters.AddWithValue("$manual_sub_description", manualSubDescription ? 1 : 0);
+        command.Parameters.AddWithValue("$manual_family", manualFamily ? 1 : 0);
+        command.ExecuteNonQuery();
+    }
+
+    private static ProductDetails? ReadProductDetails(SqliteConnection db, SqliteTransaction tx, string code)
+    {
+        using var command = db.CreateCommand(); command.Transaction = tx;
+        command.CommandText = """
+            SELECT code,display_code,description,sub_description,family,
+                   manual_description,manual_sub_description,manual_family
+            FROM product_details WHERE code=$code
+            """;
+        command.Parameters.AddWithValue("$code", code);
+        using var reader = command.ExecuteReader();
+        if (!reader.Read()) return null;
+        return new ProductDetails(reader.GetString(0), reader.GetString(1), reader.GetString(2),
+            reader.IsDBNull(3) ? null : reader.GetString(3), reader.IsDBNull(4) ? null : reader.GetString(4),
+            reader.GetInt32(5) != 0, reader.GetInt32(6) != 0, reader.GetInt32(7) != 0);
+    }
+
+    private static PriceItem ApplyProductOverrides(SqliteConnection db, SqliteTransaction tx, PriceItem item)
+    {
+        var details = ReadProductDetails(db, tx, item.Code);
+        if (details is null) return item;
+        return item with
+        {
+            Description = details.ManualDescription ? details.Description : item.Description,
+            SubDescription = details.ManualSubDescription ? details.SubDescription : item.SubDescription,
+            Family = details.ManualFamily ? details.Family : item.Family
+        };
+    }
+
+    private static void DeleteSyntheticProduct(SqliteConnection db, SqliteTransaction tx, string code)
+    {
+        using var command = db.CreateCommand(); command.Transaction = tx;
+        command.CommandText = "DELETE FROM items WHERE id=$id AND source=$source";
+        command.Parameters.AddWithValue("$id", "product:" + code);
+        command.Parameters.AddWithValue("$source", (int)SourceKind.Catalog);
         command.ExecuteNonQuery();
     }
 
     private static Dictionary<string, string> LoadFamilies(SqliteConnection db)
     {
         using var command = db.CreateCommand(); command.CommandText = "SELECT key,description FROM families";
+        var result = new Dictionary<string, string>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read()) result[reader.GetString(0)] = reader.GetString(1);
+        return result;
+    }
+
+    private static Dictionary<string, string> LoadGroupDescriptions(SqliteConnection db)
+    {
+        using var command = db.CreateCommand(); command.CommandText = "SELECT key,description FROM group_descriptions";
         var result = new Dictionary<string, string>();
         using var reader = command.ExecuteReader();
         while (reader.Read()) result[reader.GetString(0)] = reader.GetString(1);
@@ -366,8 +530,20 @@ public sealed class SqliteStore : IStore
         if (ids.Count == 0) return 0;
         using var db = Open(); using var tx = db.BeginTransaction();
         var affected = new HashSet<string>(); var removed = 0;
+        var preservedProducts = new List<PriceItem>();
         foreach (var id in ids.Distinct())
         {
+            using (var read = db.CreateCommand())
+            {
+                read.Transaction = tx;
+                read.CommandText = "SELECT json FROM items WHERE id=$id";
+                read.Parameters.AddWithValue("$id", id);
+                if (read.ExecuteScalar() is string json)
+                {
+                    var item = JsonSerializer.Deserialize<PriceItem>(json)!;
+                    if (item.Source != SourceKind.Catalog) preservedProducts.Add(item);
+                }
+            }
             foreach (var hash in ImportHashes(db, tx, "SELECT import_hash FROM import_items WHERE item_id=$id", ("$id", id))) affected.Add(hash);
             using var links = db.CreateCommand(); links.Transaction = tx;
             links.CommandText = "DELETE FROM import_items WHERE item_id=$id";
@@ -376,8 +552,52 @@ public sealed class SqliteStore : IStore
             command.CommandText = "DELETE FROM items WHERE id=$id";
             command.Parameters.AddWithValue("$id", id); removed += command.ExecuteNonQuery();
         }
+        foreach (var product in preservedProducts.GroupBy(x => x.Code).Select(x => x.Last()))
+            CreateProductCatalogItemIfNeeded(db, tx, product);
         RemoveEmptyImports(db, tx, affected);
         tx.Commit(); return removed;
+    }
+
+    private static void CreateProductCatalogItemIfNeeded(SqliteConnection db, SqliteTransaction tx, PriceItem item)
+    {
+        using var exists = db.CreateCommand(); exists.Transaction = tx;
+        exists.CommandText = "SELECT 1 FROM items WHERE code=$code LIMIT 1";
+        exists.Parameters.AddWithValue("$code", item.Code);
+        if (exists.ExecuteScalar() is not null) return;
+
+        var details = ReadProductDetails(db, tx, item.Code);
+        var source = ApplyProductOverrides(db, tx, item) with
+        {
+            Id = "product:" + item.Code,
+            Code = item.Code,
+            DisplayCode = details?.DisplayCode ?? item.DisplayCode,
+            Price = 0,
+            NormalPrice = null,
+            Start = null,
+            End = null,
+            Source = SourceKind.Catalog,
+            GroupCode = null,
+            GroupDescription = null,
+            Quantity = 1,
+            Rule = QuantityRule.UnitPrice,
+            FileName = "Cadastro persistido",
+            Sheet = "",
+            Row = 0,
+            FamilyDescription = null,
+            ImageId = null,
+            FamilyImageId = null
+        };
+        using var insert = db.CreateCommand(); insert.Transaction = tx;
+        insert.CommandText = """
+            INSERT OR IGNORE INTO items(id,code,search,source,json)
+            VALUES($id,$code,$search,$source,$json)
+            """;
+        insert.Parameters.AddWithValue("$id", source.Id);
+        insert.Parameters.AddWithValue("$code", source.Code);
+        insert.Parameters.AddWithValue("$search", SearchKey(source.Description));
+        insert.Parameters.AddWithValue("$source", (int)source.Source);
+        insert.Parameters.AddWithValue("$json", JsonSerializer.Serialize(source));
+        insert.ExecuteNonQuery();
     }
 
     private static List<string> ImportHashes(SqliteConnection db, SqliteTransaction tx, string sql, params (string Name, object Value)[] args)
@@ -428,6 +648,22 @@ public sealed class SqliteStore : IStore
             registry.Parameters.AddWithValue("$hash", hash); registry.ExecuteNonQuery();
             tx.Commit(); return 0;
         }
+        using var candidatesQuery = db.CreateCommand(); candidatesQuery.Transaction = tx;
+        candidatesQuery.CommandText = """
+            SELECT json FROM items WHERE id IN
+                (SELECT item_id FROM import_items WHERE import_hash=$hash)
+                AND NOT EXISTS
+                (SELECT 1 FROM import_items other
+                 WHERE other.item_id=items.id AND other.import_hash<>$hash)
+            """;
+        candidatesQuery.Parameters.AddWithValue("$hash", hash);
+        var preservedProducts = new List<PriceItem>();
+        using (var reader = candidatesQuery.ExecuteReader())
+            while (reader.Read())
+            {
+                var item = JsonSerializer.Deserialize<PriceItem>(reader.GetString(0))!;
+                if (item.Source != SourceKind.Catalog) preservedProducts.Add(item);
+            }
         using var delete = db.CreateCommand(); delete.Transaction = tx;
         delete.CommandText = """
             DELETE FROM items WHERE id IN
@@ -444,6 +680,8 @@ public sealed class SqliteStore : IStore
         using var imported = db.CreateCommand(); imported.Transaction = tx;
         imported.CommandText = "DELETE FROM imports WHERE hash=$hash";
         imported.Parameters.AddWithValue("$hash", hash); imported.ExecuteNonQuery();
+        foreach (var product in preservedProducts.GroupBy(x => x.Code).Select(x => x.Last()))
+            CreateProductCatalogItemIfNeeded(db, tx, product);
         tx.Commit(); return removed;
     }
 
@@ -463,6 +701,13 @@ public sealed class SqliteStore : IStore
         var affected = ImportHashes(db, tx,
             $"SELECT DISTINCT import_hash FROM import_items WHERE item_id IN (SELECT id FROM items WHERE {expiredFilter})",
             ("$today", today));
+        using var candidatesQuery = db.CreateCommand(); candidatesQuery.Transaction = tx;
+        candidatesQuery.CommandText = $"SELECT json FROM items WHERE {expiredFilter}";
+        candidatesQuery.Parameters.AddWithValue("$today", today);
+        var preservedProducts = new List<PriceItem>();
+        using (var reader = candidatesQuery.ExecuteReader())
+            while (reader.Read())
+                preservedProducts.Add(JsonSerializer.Deserialize<PriceItem>(reader.GetString(0))!);
         using var remove = db.CreateCommand(); remove.Transaction = tx;
         remove.CommandText = $"DELETE FROM items WHERE {expiredFilter}";
         remove.Parameters.AddWithValue("$today", today);
@@ -470,6 +715,8 @@ public sealed class SqliteStore : IStore
         using var orphan = db.CreateCommand(); orphan.Transaction = tx;
         orphan.CommandText = "DELETE FROM import_items WHERE item_id NOT IN (SELECT id FROM items)";
         orphan.ExecuteNonQuery();
+        foreach (var product in preservedProducts.GroupBy(x => x.Code).Select(x => x.Last()))
+            CreateProductCatalogItemIfNeeded(db, tx, product);
         RemoveEmptyImports(db, tx, affected);
         tx.Commit(); return removed;
     }
@@ -489,6 +736,7 @@ public sealed class SqliteStore : IStore
         command.Parameters.AddWithValue("$limit", Math.Clamp(limit, 1, 1000));
         command.Parameters.AddWithValue("$offset", Math.Max(0, offset));
         var families = LoadFamilies(db);
+        var groups = LoadGroupDescriptions(db);
         var productImages = LoadProductImages(db);
         var familyImages = LoadFamilyImages(db);
         using var reader = command.ExecuteReader(); var result = new List<PriceItem>();
@@ -501,6 +749,9 @@ public sealed class SqliteStore : IStore
                 var familyKey = FamilyCode.Key(item.Family);
                 item = item with { FamilyDescription = families.GetValueOrDefault(familyKey), FamilyImageId = familyImages.GetValueOrDefault(familyKey) };
             }
+            if (item.Source == SourceKind.Promotion && !string.IsNullOrWhiteSpace(item.GroupCode)
+                && groups.TryGetValue(FamilyCode.Key(item.GroupCode), out var groupDescription))
+                item = item with { GroupDescription = groupDescription };
             result.Add(item);
         }
         return result;

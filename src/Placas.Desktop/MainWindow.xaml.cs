@@ -1578,6 +1578,18 @@ public partial class MainWindow : MetroWindow
         if (e.OriginalSource is TextBox || e.Key != Key.Delete) return;
         RemoveBatchItemClick(sender, e); e.Handled = true;
     }
+    private void BatchGridMouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (e.OriginalSource is not DependencyObject source
+            || ItemsControl.ContainerFromElement(BatchGrid, source) is not DataGridRow rowContainer
+            || BatchGrid.ItemContainerGenerator.ItemFromContainer(rowContainer) is not BatchRow row)
+            return;
+
+        BatchGrid.SelectedItems.Clear();
+        BatchGrid.SelectedItem = row;
+        EditBatchDescriptionClick(sender, e);
+        e.Handled = true;
+    }
     private void RefreshHistory() => HistoryGrid.ItemsSource = store.History();
     private void RefreshHistoryClick(object sender, RoutedEventArgs e) => Run(RefreshHistory);
     private void LoadHistoryClick(object sender, RoutedEventArgs e) => Run(() =>
