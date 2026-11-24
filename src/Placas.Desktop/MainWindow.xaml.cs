@@ -100,6 +100,9 @@ public sealed class BatchRow(PriceItem item, int copies)
 
 public partial class MainWindow : MetroWindow
 {
+    private enum FamilyFilterKind { All, Family, Unassigned }
+    private sealed record FamilyFilterOption(string Label, FamilyFilterKind Kind, string? FamilyLabel = null);
+
     private readonly IStore store;
     private readonly BatchService batchService = new();
     private readonly PlateRenderer renderer = new();
@@ -596,17 +599,20 @@ public partial class MainWindow : MetroWindow
         allProducts.Clear();
         products.Clear();
         ProductsGrid.ItemsSource = products;
-        var previous = FamilyFilter.SelectedItem as string;
+        var previous = FamilyFilter.SelectedItem as FamilyFilterOption;
         try
         {
             var searchText = productSearchText;
             var searchSource = productSearchSource;
             var families = await Task.Run(() => store.SearchFamilies(searchText, searchSource));
             if (generation != productSearchGeneration) return;
-            const string allFamilies = "Todas as famílias";
+            var allFamilies = new FamilyFilterOption("Todas as famílias", FamilyFilterKind.All);
+            var options = new List<FamilyFilterOption> { allFamilies };
+            options.AddRange(families.Select(family => new FamilyFilterOption(family, FamilyFilterKind.Family, family)));
+            options.Add(new FamilyFilterOption("Sem família", FamilyFilterKind.Unassigned));
             loadingFilters = true;
-            FamilyFilter.ItemsSource = new[] { allFamilies }.Concat(families).ToList();
-            FamilyFilter.SelectedItem = previous is not null && families.Contains(previous) ? previous : allFamilies;
+            FamilyFilter.ItemsSource = options;
+            FamilyFilter.SelectedItem = previous is not null && options.Contains(previous) ? previous : allFamilies;
             loadingFilters = false;
             ApplyProductFilters();
             await LoadProductsUntilVisibleAsync(generation);
@@ -635,7 +641,7 @@ public partial class MainWindow : MetroWindow
     }
     private bool MatchesProductFilters(ProductRow row)
     {
-        var family = FamilyFilter.SelectedIndex > 0 ? FamilyFilter.SelectedItem as string : null;
+        var family = FamilyFilter.SelectedItem as FamilyFilterOption;
         var matchesSituation = StatusFilter.SelectedIndex switch
         {
             1 => !row.IsExpired,
@@ -643,8 +649,13 @@ public partial class MainWindow : MetroWindow
             3 => row.Level is "attention" or "zero",
             _ => true
         };
-        return matchesSituation && (family is null
-            || string.Equals(row.FamilyLabel, family, StringComparison.CurrentCultureIgnoreCase));
+        var matchesFamily = family is null || (family.Kind switch
+        {
+            FamilyFilterKind.All => true,
+            FamilyFilterKind.Unassigned => string.IsNullOrWhiteSpace(row.Item.Family),
+            _ => string.Equals(row.FamilyLabel, family.FamilyLabel, StringComparison.CurrentCultureIgnoreCase)
+        });
+        return matchesSituation && matchesFamily;
     }
     private async Task LoadNextProductsPageAsync(int generation)
     {

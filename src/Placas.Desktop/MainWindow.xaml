@@ -89,7 +89,7 @@
                 </StackPanel>
                 <StackPanel x:Name="ProductFamilyFilter" Grid.Column="3">
                   <TextBlock Text="Família" Style="{StaticResource GroupLabel}"/>
-                  <ComboBox x:Name="FamilyFilter" SelectionChanged="ProductFilterChanged"/>
+                  <ComboBox x:Name="FamilyFilter" DisplayMemberPath="Label" SelectionChanged="ProductFilterChanged"/>
                 </StackPanel>
                 <Button x:Name="SearchButton" Grid.Column="4" Content="Pesquisar" Click="SearchClick" VerticalAlignment="Bottom" Margin="3"/>
               </Grid>
