@@ -644,8 +644,8 @@
             <TextBlock Text="Consulte os arquivos importados e remova dados vencidos com segurança." Style="{StaticResource PageSubtitle}"/>
             <WrapPanel>
               <Button Content="Atualizar lista" Click="RefreshImportsClick"/>
-              <Button Style="{StaticResource DangerButton}" Content="Excluir importações selecionadas" Click="DeleteImportClick" ToolTip="Selecione uma ou mais linhas (Ctrl/Shift+clique). Atalho: Delete"/>
-              <Button Content="Limpar ofertas e promoções vencidas" Click="CleanExpiredClick"/>
+              <Button x:Name="DeleteImportButton" Style="{StaticResource DangerButton}" Content="Excluir importações selecionadas" Click="DeleteImportClick" ToolTip="Selecione uma ou mais linhas (Ctrl/Shift+clique). Atalho: Delete"/>
+              <Button x:Name="CleanExpiredButton" Content="Limpar ofertas e promoções vencidas" Click="CleanExpiredClick"/>
             </WrapPanel>
             <TextBlock Text="Um backup é criado antes de qualquer exclusão. Layouts e histórico são preservados. Importações antigas sem vínculos não podem ser excluídas individualmente." TextWrapping="Wrap" Margin="4,10" Foreground="{DynamicResource TextSecondaryBrush}"/>
           </StackPanel>

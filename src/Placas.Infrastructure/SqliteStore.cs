@@ -529,32 +529,63 @@ public sealed class SqliteStore : IStore
     {
         if (ids.Count == 0) return 0;
         using var db = Open(); using var tx = db.BeginTransaction();
-        var affected = new HashSet<string>(); var removed = 0;
-        var preservedProducts = new List<PriceItem>();
+        using var temp = db.CreateCommand(); temp.Transaction = tx;
+        temp.CommandText = "CREATE TEMP TABLE IF NOT EXISTS delete_item_ids(id TEXT PRIMARY KEY)";
+        temp.ExecuteNonQuery();
+        using (var clear = db.CreateCommand()) { clear.Transaction = tx; clear.CommandText = "DELETE FROM delete_item_ids"; clear.ExecuteNonQuery(); }
+
+        using var addId = db.CreateCommand(); addId.Transaction = tx;
+        addId.CommandText = "INSERT OR IGNORE INTO delete_item_ids(id) VALUES($id)";
+        var idParameter = addId.Parameters.Add("$id", SqliteType.Text);
+        addId.Prepare();
         foreach (var id in ids.Distinct())
         {
-            using (var read = db.CreateCommand())
-            {
-                read.Transaction = tx;
-                read.CommandText = "SELECT json FROM items WHERE id=$id";
-                read.Parameters.AddWithValue("$id", id);
-                if (read.ExecuteScalar() is string json)
-                {
-                    var item = JsonSerializer.Deserialize<PriceItem>(json)!;
-                    if (item.Source != SourceKind.Catalog) preservedProducts.Add(item);
-                }
-            }
-            foreach (var hash in ImportHashes(db, tx, "SELECT import_hash FROM import_items WHERE item_id=$id", ("$id", id))) affected.Add(hash);
-            using var links = db.CreateCommand(); links.Transaction = tx;
-            links.CommandText = "DELETE FROM import_items WHERE item_id=$id";
-            links.Parameters.AddWithValue("$id", id); links.ExecuteNonQuery();
-            using var command = db.CreateCommand(); command.Transaction = tx;
-            command.CommandText = "DELETE FROM items WHERE id=$id";
-            command.Parameters.AddWithValue("$id", id); removed += command.ExecuteNonQuery();
+            idParameter.Value = id;
+            addId.ExecuteNonQuery();
         }
+
+        var affected = new HashSet<string>();
+        var preservedProducts = new List<PriceItem>();
+        using (var read = db.CreateCommand())
+        {
+            read.Transaction = tx;
+            read.CommandText = """
+                SELECT i.json
+                FROM items i INNER JOIN delete_item_ids d ON d.id=i.id
+                WHERE i.source<>0
+                """;
+            using var reader = read.ExecuteReader();
+            while (reader.Read())
+                preservedProducts.Add(JsonSerializer.Deserialize<PriceItem>(reader.GetString(0))!);
+        }
+        using (var readImports = db.CreateCommand())
+        {
+            readImports.Transaction = tx;
+            readImports.CommandText = """
+                SELECT DISTINCT l.import_hash
+                FROM import_items l INNER JOIN delete_item_ids d ON d.id=l.item_id
+                """;
+            using var reader = readImports.ExecuteReader();
+            while (reader.Read()) affected.Add(reader.GetString(0));
+        }
+        using var links = db.CreateCommand(); links.Transaction = tx;
+        links.CommandText = """
+            DELETE FROM import_items
+            WHERE item_id IN (SELECT id FROM delete_item_ids)
+            """;
+        links.ExecuteNonQuery();
+        using var command = db.CreateCommand(); command.Transaction = tx;
+        command.CommandText = """
+            DELETE FROM items
+            WHERE id IN (SELECT id FROM delete_item_ids)
+            """;
+        var removed = command.ExecuteNonQuery();
         foreach (var product in preservedProducts.GroupBy(x => x.Code).Select(x => x.Last()))
             CreateProductCatalogItemIfNeeded(db, tx, product);
         RemoveEmptyImports(db, tx, affected);
+        using var clean = db.CreateCommand(); clean.Transaction = tx;
+        clean.CommandText = "DELETE FROM delete_item_ids";
+        clean.ExecuteNonQuery();
         tx.Commit(); return removed;
     }
 

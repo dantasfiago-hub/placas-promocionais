@@ -375,6 +375,11 @@ public partial class MainWindow : MetroWindow
         try { action(); }
         catch (Exception ex) { App.Log(ex); MessageBox.Show(this, ex.Message, "Confira os dados", MessageBoxButton.OK, MessageBoxImage.Warning); }
     }
+    private async Task RunAsync(Func<Task> action)
+    {
+        try { await action(); }
+        catch (Exception ex) { App.Log(ex); MessageBox.Show(this, ex.Message, "Confira os dados", MessageBoxButton.OK, MessageBoxImage.Warning); }
+    }
 
     private async void ImportClick(object sender, RoutedEventArgs e)
     {
@@ -425,7 +430,7 @@ public partial class MainWindow : MetroWindow
         store.Backup(path);
         return path;
     }
-    private void DeleteImportClick(object sender, RoutedEventArgs e) => Run(() =>
+    private async void DeleteImportClick(object sender, RoutedEventArgs e) => await RunAsync(async () =>
     {
         var rows = ImportsGrid.SelectedItems.OfType<ImportRow>().ToList();
         if (rows.Count == 0) throw new InvalidOperationException("Selecione uma ou mais importações (Ctrl/Shift+clique).");
@@ -440,19 +445,33 @@ public partial class MainWindow : MetroWindow
             + (rows.Count > 6 ? $"{Environment.NewLine}… e mais {rows.Count - 6}" : "");
         var question = $"{names}{Environment.NewLine}{Environment.NewLine}{string.Join("." + Environment.NewLine, parts)}.{Environment.NewLine}{Environment.NewLine}Continuar?";
         if (MessageBox.Show(this, question, "Confirmar exclusão", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
-        var backup = BackupBeforeMaintenance();
-        var removed = 0;
-        foreach (var row in rows) removed += store.DeleteImport(row.Record.Hash);
-        if (removed > 0) { basket.Clear(); InvalidatePreview(); }
-        RefreshImports(); RefreshProducts();
-        Status.Text = $"{rows.Count} importação(ões) tratada(s); {removed} condição(ões) removida(s). Backup: {backup}";
+        DeleteImportButton.IsEnabled = false;
+        Status.Text = "Criando backup e excluindo importação(ões)…";
+        try
+        {
+            var result = await Task.Run(() =>
+            {
+                var backup = BackupBeforeMaintenance();
+                var removed = 0;
+                foreach (var row in rows) removed += store.DeleteImport(row.Record.Hash);
+                return (backup, removed);
+            });
+            var (backup, removed) = result;
+            if (removed > 0) { basket.Clear(); InvalidatePreview(); }
+            RefreshImports(); RefreshProducts();
+            Status.Text = $"{rows.Count} importação(ões) tratada(s); {removed} condição(ões) removida(s). Backup: {backup}";
+        }
+        finally
+        {
+            DeleteImportButton.IsEnabled = true;
+        }
     });
     private void ImportsGridKeyDown(object sender, KeyEventArgs e)
     {
         if (e.OriginalSource is TextBox || e.Key != Key.Delete) return;
         DeleteImportClick(sender, e); e.Handled = true;
     }
-    private void CleanExpiredClick(object sender, RoutedEventArgs e) => Run(() =>
+    private async void CleanExpiredClick(object sender, RoutedEventArgs e) => await RunAsync(async () =>
     {
         var today = DateOnly.FromDateTime(DateTime.Today);
         var expired = store.CountExpired(today);
@@ -465,10 +484,24 @@ public partial class MainWindow : MetroWindow
         }
         if (MessageBox.Show(this, $"Excluir {expired} ofertas e promoções vencidas antes de {today:dd/MM/yyyy}?\n\nO catálogo, os layouts e o histórico serão preservados.",
             "Limpar condições vencidas", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
-        var backup = BackupBeforeMaintenance();
-        var removed = store.DeleteExpired(today);
-        basket.Clear(); InvalidatePreview(); RefreshImports(); RefreshProducts();
-        Status.Text = $"Limpeza concluída: {removed} condições removidas. Backup: {backup}";
+        CleanExpiredButton.IsEnabled = false;
+        Status.Text = "Criando backup e removendo condições vencidas…";
+        try
+        {
+            var result = await Task.Run(() =>
+            {
+                var backup = BackupBeforeMaintenance();
+                var removed = store.DeleteExpired(today);
+                return (backup, removed);
+            });
+            var (backup, removed) = result;
+            basket.Clear(); InvalidatePreview(); RefreshImports(); RefreshProducts();
+            Status.Text = $"Limpeza concluída: {removed} condições removidas. Backup: {backup}";
+        }
+        finally
+        {
+            CleanExpiredButton.IsEnabled = true;
+        }
     });
 
 
@@ -487,7 +520,7 @@ public partial class MainWindow : MetroWindow
             throw new InvalidOperationException($"A edição funciona com um item por vez e há {targets.Count} selecionados. Desmarque os outros.");
         EditProductDialog(targets[0].Item, false);
     });
-    private void DeleteProductClick(object sender, RoutedEventArgs e) => Run(() =>
+    private async void DeleteProductClick(object sender, RoutedEventArgs e) => await RunAsync(async () =>
     {
         var targets = Targets();
         if (targets.Count == 0) throw new InvalidOperationException("Marque ou destaque os registros que deseja excluir.");
@@ -500,11 +533,25 @@ public partial class MainWindow : MetroWindow
               + $"{nl}{nl}O histórico já impresso será preservado.";
         if (MessageBox.Show(this, question, "Confirmar exclusão", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
         var ids = targets.Select(x => x.Item.Id).ToHashSet();
-        var backup = BackupBeforeMaintenance();
-        var removed = store.DeleteItems(ids);
-        foreach (var row in basket.Where(x => ids.Contains(x.Item.Id)).ToList()) basket.Remove(row);
-        InvalidatePreview(); RefreshProducts(); RefreshImports();
-        Status.Text = $"{removed} registro(s) excluído(s). Backup: {backup}";
+        DeleteProductButton.IsEnabled = false;
+        Status.Text = "Criando backup e excluindo registros…";
+        try
+        {
+            var result = await Task.Run(() =>
+            {
+                var backup = BackupBeforeMaintenance();
+                var removed = store.DeleteItems(ids);
+                return (backup, removed);
+            });
+            var (backup, removed) = result;
+            foreach (var row in basket.Where(x => ids.Contains(x.Item.Id)).ToList()) basket.Remove(row);
+            InvalidatePreview(); RefreshProducts(); RefreshImports();
+            Status.Text = $"{removed} registro(s) excluído(s). Backup: {backup}";
+        }
+        finally
+        {
+            DeleteProductButton.IsEnabled = true;
+        }
     });
     private void EditProductDialog(PriceItem item, bool creating)
     {
