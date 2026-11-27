@@ -821,6 +821,7 @@ public partial class MainWindow
             return element.Shape switch
             {
                 PlateShapes.Rectangle => "Forma: Retângulo",
+                PlateShapes.RoundedRectangle => "Forma: Retângulo arredondado",
                 PlateShapes.Ellipse => "Forma: Elipse",
                 PlateShapes.Line => "Forma: Linha",
                 PlateShapes.Triangle => "Forma: Triângulo",
