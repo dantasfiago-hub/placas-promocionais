@@ -290,6 +290,7 @@
                   <Button.ContextMenu>
                     <ContextMenu>
                       <MenuItem Header="Retângulo" Tag="rectangle" Click="AddShapeItemClick"/>
+                      <MenuItem Header="Retângulo com pontas arredondadas" Tag="rounded-rectangle" Click="AddShapeItemClick"/>
                       <MenuItem Header="Elipse / círculo" Tag="ellipse" Click="AddShapeItemClick"/>
                       <MenuItem Header="Linha" Tag="line" Click="AddShapeItemClick"/>
                       <MenuItem Header="Triângulo" Tag="triangle" Click="AddShapeItemClick"/>
