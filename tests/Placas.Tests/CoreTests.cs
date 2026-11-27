@@ -896,6 +896,17 @@ public class CoreTests
         PlateRules.ValidateTemplate(copy);
     }
 
+    [Fact] public void RoundedRectangleKeepsCircularCornersAcrossAspectRatios()
+    {
+        foreach (var (width, height) in new[] { (90d, 15d), (15d, 90d), (35d, 25d), (12d, 12d) })
+        {
+            var (radiusX, radiusY) = PlateShapes.RoundedRectangleRadii(width, height);
+            Assert.Equal(width * radiusX, height * radiusY, 10);
+            Assert.True(radiusX > 0 && radiusX <= 0.2);
+            Assert.True(radiusY > 0 && radiusY <= 0.2);
+        }
+    }
+
     [Fact] public void RoundedRectangleShapeIsValidatedAndPersisted()
     {
         Assert.True(PlateShapes.IsShape(PlateShapes.RoundedRectangle));
