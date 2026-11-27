@@ -58,13 +58,14 @@ public sealed record HistoryEntry(string Id, string CreatedAt, string Status, st
 public static class PlateShapes
 {
     public const string Rectangle = "rectangle";
+    public const string RoundedRectangle = "rounded-rectangle";
     public const string Ellipse = "ellipse";
     public const string Line = "line";
     public const string Triangle = "triangle";
     public const string Arrow = "arrow";
     public const string Star = "star";
 
-    public static bool IsShape(string? shape) => shape is Rectangle or Ellipse or Line or Triangle or Arrow or Star;
+    public static bool IsShape(string? shape) => shape is Rectangle or RoundedRectangle or Ellipse or Line or Triangle or Arrow or Star;
 }
 
 public sealed class PlateTextStyle
