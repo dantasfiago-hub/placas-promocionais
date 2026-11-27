@@ -19,7 +19,7 @@ Para PDF, selecione **Microsoft Print to PDF** no diálogo do Windows. A aplica�
 
 Um layout é independente dos produtos. Selecione 30 produtos, escolha um layout e gere 30 placas sem editar cada uma. Cópias são configuradas por produto.
 
-O editor desta versão usa uma tabela de propriedades com prévia, não um canvas de arrastar e soltar. Cada elemento suporta texto fixo e campos:
+O editor desta versão usa uma tabela de propriedades com prévia, não um canvas de arrastar e soltar. Cada elemento suporta texto fixo e campos. As formas vetoriais incluem retângulo, retângulo com pontas arredondadas, elipse, linha, triângulo, seta e estrela:
 
 | Campo | Conteúdo |
 |---|---|
