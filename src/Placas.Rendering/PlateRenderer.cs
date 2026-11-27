@@ -106,10 +106,12 @@ public sealed class PlateRenderer
 
     private static Border ShapeElement(PlateElement element)
     {
+        var roundedRadii = PlateShapes.RoundedRectangleRadii(element.Width, element.Height);
         Geometry geometry = element.Shape switch
         {
             PlateShapes.Rectangle => new RectangleGeometry(new Rect(0, 0, 1, 1)),
-            PlateShapes.RoundedRectangle => new RectangleGeometry(new Rect(0, 0, 1, 1), 0.12, 0.12),
+            PlateShapes.RoundedRectangle => new RectangleGeometry(
+                new Rect(0, 0, 1, 1), roundedRadii.RadiusX, roundedRadii.RadiusY),
             PlateShapes.Ellipse => new EllipseGeometry(new Point(.5, .5), .5, .5),
             PlateShapes.Line => Geometry.Parse("M 0,0.5 L 1,0.5"),
             PlateShapes.Triangle => Geometry.Parse("M 0.5,0 L 1,1 L 0,1 Z"),
