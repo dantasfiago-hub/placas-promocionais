@@ -65,6 +65,17 @@ public static class PlateShapes
     public const string Arrow = "arrow";
     public const string Star = "star";
 
+    // The values are normalized to the unit geometry. Using different X/Y
+    // radii keeps the rendered corner radius circular after non-uniform scaling.
+    public static (double RadiusX, double RadiusY) RoundedRectangleRadii(double width, double height)
+    {
+        if (!double.IsFinite(width) || !double.IsFinite(height) || width <= 0 || height <= 0)
+            throw new ArgumentOutOfRangeException(nameof(width), "As dimensões devem ser maiores que zero.");
+
+        var radiusMm = Math.Min(width, height) * 0.20;
+        return (radiusMm / width, radiusMm / height);
+    }
+
     public static bool IsShape(string? shape) => shape is Rectangle or RoundedRectangle or Ellipse or Line or Triangle or Arrow or Star;
 }
 
