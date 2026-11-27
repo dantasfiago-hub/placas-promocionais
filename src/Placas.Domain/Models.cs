@@ -72,8 +72,10 @@ public static class PlateShapes
         if (!double.IsFinite(width) || !double.IsFinite(height) || width <= 0 || height <= 0)
             throw new ArgumentOutOfRangeException(nameof(width), "As dimensões devem ser maiores que zero.");
 
-        var radiusMm = Math.Min(width, height) * 0.20;
-        return (radiusMm / width, radiusMm / height);
+        var shortestSide = Math.Min(width, height);
+        return (
+            0.20 * (shortestSide / width),
+            0.20 * (shortestSide / height));
     }
 
     public static bool IsShape(string? shape) => shape is Rectangle or RoundedRectangle or Ellipse or Line or Triangle or Arrow or Star;
