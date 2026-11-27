@@ -896,6 +896,24 @@ public class CoreTests
         PlateRules.ValidateTemplate(copy);
     }
 
+    [Fact] public void RoundedRectangleShapeIsValidatedAndPersisted()
+    {
+        Assert.True(PlateShapes.IsShape(PlateShapes.RoundedRectangle));
+        var template = PlateTemplate.Default();
+        template.Elements[0] = new PlateElement
+        {
+            Shape = PlateShapes.RoundedRectangle, Width = 25, Height = 12,
+            Background = "#FFFF00", Foreground = "#111111", StrokeWidth = 0.8
+        };
+
+        PlateRules.ValidateTemplate(template);
+        var copy = System.Text.Json.JsonSerializer.Deserialize<PlateTemplate>(
+            System.Text.Json.JsonSerializer.Serialize(template))!;
+
+        Assert.Equal(PlateShapes.RoundedRectangle, copy.Elements[0].Shape);
+        Assert.Equal(0.8, copy.Elements[0].StrokeWidth);
+    }
+
     [Fact] public void ShapeElementsAreValidatedAndPersisted()
     {
         var template = PlateTemplate.Default();
